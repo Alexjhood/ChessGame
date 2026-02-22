@@ -1,1 +1,19 @@
+# System files
+.DS_Store
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+coverage/
+
+# TypeScript incremental artifacts
+*.tsbuildinfo
+
+# Generated JS from TS config (keep source .ts files)
+vite.config.js
+vite.config.d.ts
+
+# Local analysis assets
 analysis/*.zst

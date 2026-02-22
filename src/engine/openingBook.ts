@@ -12,7 +12,7 @@ let cache: OpeningBook | null = null;
 
 export async function loadOpeningBook(): Promise<OpeningBook> {
   if (cache) return cache;
-  const res = await fetch('/openingBook.json');
+  const res = await fetch(`${import.meta.env.BASE_URL}openingBook.json`);
   if (!res.ok) {
     cache = { lines: [] };
     return cache;

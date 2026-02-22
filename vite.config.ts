@@ -23,6 +23,7 @@ const isolationHeadersPlugin = {
 };
 
 export default defineConfig({
+  base: process.env.GITHUB_ACTIONS ? '/ChessGame/' : '/',
   plugins: [react(), isolationHeadersPlugin],
   server: {
     headers: isolationHeaders

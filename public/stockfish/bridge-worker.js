@@ -20,7 +20,7 @@ function bindEngine(sf) {
 async function ensureEngine() {
   if (enginePromise) return enginePromise;
   enginePromise = (async () => {
-    importScripts('/stockfish/stockfish.js?v=2');
+    importScripts('stockfish.js?v=2');
     const factory = self.Stockfish;
     if (typeof factory !== 'function') {
       throw new Error('Stockfish factory not found on worker global');
@@ -29,7 +29,7 @@ async function ensureEngine() {
     // via importScripts from another worker, otherwise worker.js gets an
     // undefined urlOrBlob and fails URL.createObjectURL.
     const sf = await factory({
-      mainScriptUrlOrBlob: new URL('/stockfish/stockfish.js?v=2', self.location.origin).toString()
+      mainScriptUrlOrBlob: new URL('stockfish.js?v=2', self.location.href).toString()
     });
     return bindEngine(sf);
   })().catch((err) => {

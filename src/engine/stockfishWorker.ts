@@ -125,7 +125,7 @@ async function probeCapabilities(worker: Worker): Promise<EngineHandle['capabili
 }
 
 export async function initEngine(): Promise<EngineHandle> {
-  const worker = new Worker('/stockfish/bridge-worker.js?v=2');
+  const worker = new Worker(`${import.meta.env.BASE_URL}stockfish/bridge-worker.js?v=2`);
   try {
     const capabilities = await probeCapabilities(worker);
     await waitForReady(worker);
