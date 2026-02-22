@@ -95,6 +95,11 @@ This repo is prepared for Pages via GitHub Actions.
 3. Let workflow `Deploy to GitHub Pages` complete
 4. Open deployed site URL
 
+### Stockfish on Pages
+- The included Stockfish build is pthread-based and requires `SharedArrayBuffer`.
+- On GitHub Pages, this project uses `public/coi-serviceworker.js` to inject COOP/COEP headers at runtime so `crossOriginIsolated` can be enabled after first load/reload.
+- If Stockfish is unavailable on first visit, refresh once after service worker registration.
+
 ## 📌 Notes
 - Stockfish web-worker assets live in `/public/stockfish`.
 - For local threaded engine behavior, COOP/COEP headers are configured in Vite dev/preview.
@@ -102,4 +107,3 @@ This repo is prepared for Pages via GitHub Actions.
 
 ## 🧾 File-Level Documentation
 Short **“File Purpose / Key Mechanics”** headers were added at the top of editable source/config scripts across the repository to make maintenance easier.
-
