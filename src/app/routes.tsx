@@ -783,7 +783,7 @@ function TrainingScreen() {
   if (!game) return <Navigate to="/" replace />;
   const trainingTutorialActive = !tutorialDismissed && game.history.tournaments.length === 0 && game.week <= 1;
 
-  const puzzleLevelOptions = [500, 700, 900, 1100, 1300, 1500, 1700];
+  const puzzleLevelOptions = [500, 700, 900, 1100, 1300, 1500, 1700, 1900, 2100];
   const maxPuzzleAttempts = puzzleAttemptsForState(game);
   const remainingPuzzleAttempts = Math.max(0, maxPuzzleAttempts - puzzleUsed);
   const baseCredits = trainingCreditsForState(game);
@@ -1033,6 +1033,7 @@ function TrainingScreen() {
   const highlightPuzzleButtons = shouldGuidePuzzles && puzzleExpanded;
   const tutorialPuzzleDone = puzzleOutcome === 'solved' || puzzleCreditsEarned > 0;
   const tutorialCreditsAllocated = used > 0;
+  const puzzleStarted = Boolean(puzzleChallenge) || puzzleUsed > 0 || puzzleCursor > 0 || puzzleOutcome !== null;
   const puzzleLastMoveUci = useMemo(() => {
     if (!puzzleChallenge || puzzleDisplayPly <= 0) return null;
     return puzzleChallenge.solution[puzzleDisplayPly - 1] ?? null;
@@ -1432,7 +1433,10 @@ function TrainingScreen() {
           </button>
         </div>
       </div>
-      <button onClick={() => actions.setView('dashboard')}>Back</button>
+      {puzzleStarted ? <p className="lock-reason">Puzzle run started. Finish this month from training before going back.</p> : null}
+      <button disabled={puzzleStarted} onClick={() => actions.setView('dashboard')}>
+        Back
+      </button>
     </div>
   );
 }
@@ -1519,6 +1523,9 @@ function TournamentScreen() {
       : simEloDelta === 0
         ? 'Relative Elo: even'
         : `Relative Elo: ${simEloDelta > 0 ? '+' : ''}${simEloDelta} (${simEloDelta > 0 ? `${tournamentSim?.currentWhite ?? 'White'} higher` : `${tournamentSim?.currentBlack ?? 'Black'} higher`})`;
+  const tournamentStarted = Boolean(result) || Boolean(tournamentSim?.running);
+  const tournamentComplete = Boolean(result?.isComplete);
+  const mainBackLocked = tournamentStarted && !tournamentComplete;
 
   return (
     <div className="screen">
@@ -1547,7 +1554,9 @@ function TournamentScreen() {
             >
               Close Tutorial
             </button>
-            <button onClick={() => actions.finishTournamentMonth()}>Exit Tournament View</button>
+            <button disabled={mainBackLocked} onClick={() => actions.finishTournamentMonth()}>
+              Exit Tournament View
+            </button>
           </div>
         </div>
       ) : null}
@@ -1755,8 +1764,11 @@ function TournamentScreen() {
             </div>
           ) : null}
           <div className="button-row">
-            <button onClick={() => actions.finishTournamentMonth()}>Exit Tournament View</button>
+            <button disabled={!result.isComplete} onClick={() => actions.finishTournamentMonth()}>
+              Exit Tournament View
+            </button>
           </div>
+          {!result.isComplete ? <p className="lock-reason">Tournament in progress. Complete it before leaving this screen.</p> : null}
         </div>
       ) : selectedTournament ? (
         <div className="panel">
@@ -1893,7 +1905,10 @@ function TournamentScreen() {
         </>
       )}
 
-      <button onClick={() => actions.setView('dashboard')}>Back</button>
+      {mainBackLocked ? <p className="lock-reason">Tournament already started. Finish all rounds, then use Travel Home.</p> : null}
+      <button disabled={mainBackLocked} onClick={() => actions.setView('dashboard')}>
+        Back
+      </button>
       <button onClick={() => actions.setView('sandbox')}>Engine Sandbox</button>
     </div>
   );

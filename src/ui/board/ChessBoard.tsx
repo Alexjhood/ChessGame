@@ -87,6 +87,23 @@ export function ChessBoard({
 
   const fromPt = moveFrom ? squareCenter(moveFrom) : null;
   const toPt = moveTo ? squareCenter(moveTo) : null;
+  const arrowLine = (() => {
+    if (!fromPt || !toPt) return null;
+    const dx = toPt.x - fromPt.x;
+    const dy = toPt.y - fromPt.y;
+    const length = Math.hypot(dx, dy);
+    if (length < 0.001) return null;
+    // Pull the arrow tip back so it does not cover the destination piece glyph.
+    const endInset = 3.2;
+    const ux = dx / length;
+    const uy = dy / length;
+    return {
+      x1: fromPt.x,
+      y1: fromPt.y,
+      x2: toPt.x - ux * endInset,
+      y2: toPt.y - uy * endInset
+    };
+  })();
 
   const boardContent = (
     <div className="board-frame">
@@ -129,7 +146,7 @@ export function ChessBoard({
           })
         )}
       </div>
-      {fromPt && toPt ? (
+      {arrowLine ? (
         <svg className="board-arrow-layer" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
           <defs>
             <marker id="move-arrow-head" markerWidth="4" markerHeight="4" refX="2.8" refY="2" orient="auto">
@@ -137,10 +154,10 @@ export function ChessBoard({
             </marker>
           </defs>
           <line
-            x1={fromPt.x}
-            y1={fromPt.y}
-            x2={toPt.x}
-            y2={toPt.y}
+            x1={arrowLine.x1}
+            y1={arrowLine.y1}
+            x2={arrowLine.x2}
+            y2={arrowLine.y2}
             stroke="rgba(27, 123, 178, 0.92)"
             strokeWidth="1.45"
             markerEnd="url(#move-arrow-head)"
