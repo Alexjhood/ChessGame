@@ -130,6 +130,18 @@ async function probeCapabilities(worker: Worker): Promise<EngineHandle['capabili
 }
 
 export async function initEngine(): Promise<EngineHandle> {
+  const isolated = typeof window !== 'undefined' ? window.crossOriginIsolated : true;
+  const hasSab = typeof SharedArrayBuffer !== 'undefined';
+  if (!isolated || !hasSab) {
+    const host = typeof location !== 'undefined' ? location.host : '';
+    const onGithubPages = /github\\.io$/i.test(host);
+    const reason = !hasSab ? 'SharedArrayBuffer is unavailable' : 'cross-origin isolation is disabled';
+    throw new Error(
+      onGithubPages
+        ? `Stockfish requires SharedArrayBuffer + cross-origin isolation, which this GitHub Pages host does not provide (${reason}).`
+        : `Stockfish unavailable: ${reason}.`
+    );
+  }
   const worker = new Worker(`${import.meta.env.BASE_URL}stockfish/bridge-worker.js?v=2`);
   try {
     const capabilities = await probeCapabilities(worker);
