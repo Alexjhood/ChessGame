@@ -26,6 +26,7 @@ const SKILL_KEYS = [
   'competitiveness',
   'studySkills'
 ] as const;
+const WORLD_CHAMPION_NAMES = ['Arjun Valev', 'Mikael Soren', 'Levon Petrov', 'Rafael Kova', 'Daniil Sato', 'Nikolai Grun'];
 
 function clampSkillValue(skill: keyof GameState['skills'], value: number): number {
   if (skill === 'studySkills') return clamp(value, 0, 2600);
@@ -149,6 +150,30 @@ function averageSkillElo(opponent: Opponent): number {
   return Math.round((s.openingElo + s.middlegameElo + s.endgameElo + s.resilience + s.competitiveness) / 5);
 }
 
+function isWorldChampionship(template: TournamentTemplate): boolean {
+  return template.id === 'world_championship_match';
+}
+
+function buildWorldChampionshipOpponent(seed: number): Opponent {
+  const rng = createRng(seed + 44003);
+  const official = rng.int(2700, 2800);
+  const name = WORLD_CHAMPION_NAMES[rng.int(0, WORLD_CHAMPION_NAMES.length - 1)] ?? 'World Champion';
+  return {
+    id: 'world_champion',
+    name,
+    publicRating: official,
+    style: 'Solid',
+    skills: {
+      openingElo: clamp(official + rng.int(-28, 24), 2500, 2900),
+      middlegameElo: clamp(official + rng.int(-20, 30), 2500, 2900),
+      endgameElo: clamp(official + rng.int(-16, 22), 2500, 2900),
+      resilience: clamp(official + rng.int(-15, 25), 2450, 2900),
+      competitiveness: clamp(official + rng.int(-12, 26), 2450, 2900),
+      studySkills: 0
+    }
+  };
+}
+
 async function simulatePlayerGameWithEngine(
   engine: EngineHandle | null,
   whiteOpp: Opponent,
@@ -270,6 +295,9 @@ export function runSwissTournament(
   template: TournamentTemplate,
   options: EloTournamentOptions = {}
 ): TournamentRun {
+  if (isWorldChampionship(template)) {
+    return runWorldChampionshipElo(state, template, options);
+  }
   const seed = state.meta.seed + state.week * 9973;
   const rng = createRng(seed);
   const opponents = generateOpponents(seed, 31, template.avgOpponentRating, template.ratingStdDev);
@@ -462,6 +490,9 @@ export async function runSwissTournamentWithEngine(
   onProgress?: (p: TournamentProgress) => void,
   options: { maxPlayerGames?: number; presetPlayerGames?: SimRoundGame[] } = {}
 ): Promise<TournamentRun> {
+  if (isWorldChampionship(template)) {
+    return runWorldChampionshipWithEngine(state, template, onProgress, options);
+  }
   const seed = state.meta.seed + state.week * 9973;
   const rng = createRng(seed);
   const opponents = generateOpponents(seed, 31, template.avgOpponentRating, template.ratingStdDev);
@@ -755,6 +786,445 @@ export async function runSwissTournamentWithEngine(
     currentFullMove: undefined,
     evalWhiteCp: undefined
   });
+  return {
+    updatedState: updated,
+    standings,
+    roundGames,
+    watchedCandidate,
+    prizePool,
+    paidPlaces,
+    simulatedPlayerGames: playerDone,
+    totalPlayerGames,
+    isComplete
+  };
+}
+
+function runWorldChampionshipElo(state: GameState, template: TournamentTemplate, options: EloTournamentOptions = {}): TournamentRun {
+  const seed = state.meta.seed + state.week * 9973 + 9041;
+  const rng = createRng(seed);
+  const challenger = buildWorldChampionshipOpponent(seed);
+  const playerOpponent: Opponent = {
+    id: 'player',
+    name: state.avatar.name,
+    publicRating: state.publicRating,
+    style: 'Solid',
+    skills: state.skills
+  };
+
+  const standings: SwissPlayer[] = [playerOpponent, challenger].map((o) => ({
+    id: o.id,
+    name: o.name,
+    initialRating: o.publicRating,
+    rating: o.publicRating,
+    score: 0,
+    oppIds: [],
+    buchholz: 0,
+    isHuman: o.id === 'player'
+  }));
+  const totalPlayerGames = template.rounds;
+  const maxPlayerGames = Math.max(0, Math.min(totalPlayerGames, options.maxPlayerGames ?? totalPlayerGames));
+  const presetPlayerGames = options.presetPlayerGames ?? [];
+  const roundGames: SimRoundGame[] = [];
+  let simulatedPlayerGames = 0;
+  let playerGameIndex = 0;
+
+  for (let round = 1; round <= template.rounds; round += 1) {
+    if (simulatedPlayerGames >= maxPlayerGames) break;
+    const player = standings.find((s) => s.id === 'player')!;
+    const champ = standings.find((s) => s.id === 'world_champion')!;
+    const playerWhite = round % 2 === 1;
+    const white = playerWhite ? player : champ;
+    const black = playerWhite ? champ : player;
+    const whiteOpp = white.id === 'player' ? playerOpponent : challenger;
+    const blackOpp = black.id === 'player' ? playerOpponent : challenger;
+
+    let result: SimRoundGame['result'];
+    let movesUci: string[] | undefined;
+    let pgn: string | undefined;
+    const preset = presetPlayerGames[playerGameIndex];
+    playerGameIndex += 1;
+    if (preset && preset.white.id === whiteOpp.id && preset.black.id === blackOpp.id) {
+      result = preset.result;
+      movesUci = preset.movesUci;
+      pgn = preset.pgn;
+    } else {
+      const whiteStrength = options.useSkillAverageForAllGames ? averageSkillElo(whiteOpp) : white.rating;
+      const blackStrength = options.useSkillAverageForAllGames ? averageSkillElo(blackOpp) : black.rating;
+      result = sampleResult(whiteStrength, blackStrength, seed + round * 211);
+    }
+    simulatedPlayerGames += 1;
+
+    const whitePts = points(result, true);
+    const blackPts = points(result, false);
+    white.score += whitePts;
+    black.score += blackPts;
+    white.oppIds.push(black.id);
+    black.oppIds.push(white.id);
+
+    const whiteBefore = white.rating;
+    const blackBefore = black.rating;
+    white.rating = updateElo(whiteBefore, blackBefore, whitePts as 0 | 0.5 | 1);
+    black.rating = updateElo(blackBefore, whiteBefore, blackPts as 0 | 0.5 | 1);
+
+    const playerIsWhite = white.id === 'player';
+    const score = scoreOf(result, playerIsWhite);
+    const opponentRating = playerIsWhite ? blackBefore : whiteBefore;
+    const before = playerIsWhite ? whiteBefore : blackBefore;
+    const expectedScore = expected(before, opponentRating);
+    const after = playerIsWhite ? white.rating : black.rating;
+    const playerEloChange: SimRoundGame['playerEloChange'] = {
+      before,
+      after,
+      delta: after - before,
+      opponentRating,
+      expected: Number(expectedScore.toFixed(3)),
+      score
+    };
+
+    roundGames.push({ round, white: whiteOpp, black: blackOpp, result, movesUci, pgn, playerEloChange });
+  }
+
+  standings.forEach((p) => {
+    p.buchholz = p.oppIds.reduce((acc, oppId) => acc + (standings.find((x) => x.id === oppId)?.score ?? 0), 0);
+  });
+  standings.sort((a, b) => b.score - a.score || b.buchholz - a.buchholz || b.rating - a.rating);
+  const isComplete = simulatedPlayerGames >= totalPlayerGames;
+  const participantCount = 2;
+  const prizePool = template.prizePool;
+  const paidPlaces = 1;
+
+  const placement = standings.findIndex((p) => p.id === 'player') + 1;
+  const playerScore = standings.find((p) => p.id === 'player')?.score ?? 0;
+  const playerRating = standings.find((p) => p.id === 'player')?.rating ?? state.publicRating;
+  const ratingDelta = playerRating - state.publicRating;
+  const prize = payoutForPlace(placement, prizePool, participantCount, paidPlaces);
+
+  const historyGames: GameRecord[] = roundGames.map((g, idx) => ({
+    id: `${template.id}_w${state.week}_g${idx}`,
+    white: g.white.name,
+    black: g.black.name,
+    result: g.result,
+    round: g.round,
+    watched: false,
+    tournamentId: template.id
+  }));
+
+  const updated = structuredClone(state);
+  if (isComplete) {
+    const beforeSkills = structuredClone(state.skills);
+    updated.week += 1;
+    updated.ageYears = Number((updated.ageYears + 1 / 12).toFixed(2));
+    updated.money = Math.max(0, updated.money - template.entryFee + prize);
+    updated.fatigue = clamp(updated.fatigue + template.travelFatigue, 0, 100);
+    updated.reputation = clamp(updated.reputation + (placement === 1 ? 14 : 7), 0, 100);
+    updated.skills.resilience = clampSkillValue('resilience', updated.skills.resilience + Math.round(template.rounds * 1.1));
+    updated.skills.competitiveness = clampSkillValue('competitiveness', updated.skills.competitiveness + Math.round(template.rounds * 1.4));
+    updated.skills.studySkills = clampSkillValue('studySkills', updated.skills.studySkills + Math.round(template.rounds * 0.5));
+    const lossBonuses = applyRandomLossSkillBonuses(updated, roundGames, seed);
+    updated.recentSkillDeltas = {
+      openingElo: updated.skills.openingElo - beforeSkills.openingElo,
+      middlegameElo: updated.skills.middlegameElo - beforeSkills.middlegameElo,
+      endgameElo: updated.skills.endgameElo - beforeSkills.endgameElo,
+      resilience: updated.skills.resilience - beforeSkills.resilience,
+      competitiveness: updated.skills.competitiveness - beforeSkills.competitiveness,
+      studySkills: updated.skills.studySkills - beforeSkills.studySkills
+    };
+    updated.publicRating = playerRating;
+    updated.title = titleFromRating(updated.publicRating);
+    updated.confidence = clamp(updated.confidence + (ratingDelta > 0 ? 3 : ratingDelta < 0 ? -2 : 1), -20, 20);
+    if (placement === 1) {
+      updated.meta.worldChampionAchieved = true;
+    }
+    updated.history.tournaments.unshift({
+      id: `${template.id}_week_${state.week}`,
+      name: template.name,
+      week: state.week,
+      rounds: template.rounds,
+      placement,
+      score: playerScore,
+      ratingDelta,
+      prize,
+      games: historyGames
+    });
+    updated.history.tournaments = updated.history.tournaments.slice(0, 30);
+    updated.history.games.unshift(...historyGames);
+    updated.history.games = updated.history.games.slice(0, 120);
+    updated.meta.lastPlayedAt = new Date().toISOString();
+    updated.inbox.unshift(
+      placement === 1
+        ? `Month ${updated.week}: You won the World Championship match ${playerScore.toFixed(1)}-${(template.rounds - playerScore).toFixed(1)}.`
+        : `Month ${updated.week}: World Championship match finished, runner-up by score ${playerScore.toFixed(1)}/${template.rounds}.`
+    );
+    if (lossBonuses > 0) {
+      updated.inbox.unshift(`Month ${updated.week}: Learned from losses (+${lossBonuses} random skill points from lost games).`);
+    }
+    updated.inbox = updated.inbox.slice(0, MAX_INBOX_MONTHS);
+  }
+
+  const watchedCandidate = roundGames[rng.int(0, Math.max(0, roundGames.length - 1))] ?? roundGames[0]!;
+  return {
+    updatedState: updated,
+    standings,
+    roundGames,
+    watchedCandidate,
+    prizePool,
+    paidPlaces,
+    simulatedPlayerGames,
+    totalPlayerGames,
+    isComplete
+  };
+}
+
+async function runWorldChampionshipWithEngine(
+  state: GameState,
+  template: TournamentTemplate,
+  onProgress?: (p: TournamentProgress) => void,
+  options: { maxPlayerGames?: number; presetPlayerGames?: SimRoundGame[] } = {}
+): Promise<TournamentRun> {
+  const seed = state.meta.seed + state.week * 9973 + 9041;
+  const rng = createRng(seed);
+  const challenger = buildWorldChampionshipOpponent(seed);
+  const playerOpponent: Opponent = {
+    id: 'player',
+    name: state.avatar.name,
+    publicRating: state.publicRating,
+    style: 'Solid',
+    skills: state.skills
+  };
+  const standings: SwissPlayer[] = [playerOpponent, challenger].map((o) => ({
+    id: o.id,
+    name: o.name,
+    initialRating: o.publicRating,
+    rating: o.publicRating,
+    score: 0,
+    oppIds: [],
+    buchholz: 0,
+    isHuman: o.id === 'player'
+  }));
+  const totalPlayerGames = template.rounds;
+  const maxPlayerGames = Math.max(0, Math.min(totalPlayerGames, options.maxPlayerGames ?? totalPlayerGames));
+  const presetPlayerGames = options.presetPlayerGames ?? [];
+  const roundGames: SimRoundGame[] = [];
+  const playerTotal = maxPlayerGames;
+  const gamesTotal = template.rounds;
+  let playerDone = 0;
+  let gamesDone = 0;
+  let playerGameIndex = 0;
+  let engine: EngineHandle | null = null;
+
+  onProgress?.({
+    playerDone,
+    playerTotal,
+    gamesDone,
+    gamesTotal,
+    round: 0,
+    board: 0,
+    message: 'Preparing world championship match...',
+    currentWhite: undefined,
+    currentBlack: undefined,
+    currentWhiteElo: undefined,
+    currentBlackElo: undefined,
+    currentPly: undefined,
+    currentFullMove: undefined,
+    evalWhiteCp: undefined
+  });
+  try {
+    engine = await initEngine();
+  } catch {
+    throw new Error('ENGINE_UNAVAILABLE');
+  }
+
+  try {
+    for (let round = 1; round <= template.rounds; round += 1) {
+      if (playerDone >= maxPlayerGames) break;
+      const player = standings.find((s) => s.id === 'player')!;
+      const champ = standings.find((s) => s.id === 'world_champion')!;
+      const playerWhite = round % 2 === 1;
+      const white = playerWhite ? player : champ;
+      const black = playerWhite ? champ : player;
+      const whiteOpp = white.id === 'player' ? playerOpponent : challenger;
+      const blackOpp = black.id === 'player' ? playerOpponent : challenger;
+
+      let result: SimRoundGame['result'];
+      let movesUci: string[] | undefined;
+      let pgn: string | undefined;
+      const preset = presetPlayerGames[playerGameIndex];
+      playerGameIndex += 1;
+      if (preset && preset.white.id === whiteOpp.id && preset.black.id === blackOpp.id) {
+        result = preset.result;
+        movesUci = preset.movesUci;
+        pgn = preset.pgn;
+        playerDone += 1;
+      } else {
+        onProgress?.({
+          playerDone,
+          playerTotal,
+          gamesDone,
+          gamesTotal,
+          round,
+          board: 1,
+          message: `Game ${round}/12: ${whiteOpp.name} vs ${blackOpp.name}`
+        });
+        const fullGame = await simulatePlayerGameWithEngine(
+          engine,
+          whiteOpp,
+          blackOpp,
+          white.rating,
+          black.rating,
+          state,
+          template,
+          round,
+          seed + round * 211,
+          (move) =>
+            onProgress?.({
+              playerDone,
+              playerTotal,
+              gamesDone,
+              gamesTotal,
+              round,
+              board: 1,
+              message: `Game ${round}/12: ${move.white} vs ${move.black} | move ${move.fullMove}`,
+              currentWhite: move.white,
+              currentBlack: move.black,
+              currentWhiteElo: move.whiteElo,
+              currentBlackElo: move.blackElo,
+              currentPly: move.ply,
+              currentFullMove: move.fullMove,
+              evalWhiteCp: move.evalWhiteCp
+            })
+        );
+        result = fullGame.result;
+        movesUci = fullGame.movesUci;
+        pgn = fullGame.pgn;
+        playerDone += 1;
+      }
+      gamesDone += 1;
+
+      const whitePts = points(result, true);
+      const blackPts = points(result, false);
+      white.score += whitePts;
+      black.score += blackPts;
+      white.oppIds.push(black.id);
+      black.oppIds.push(white.id);
+
+      const whiteBefore = white.rating;
+      const blackBefore = black.rating;
+      white.rating = updateElo(whiteBefore, blackBefore, whitePts as 0 | 0.5 | 1);
+      black.rating = updateElo(blackBefore, whiteBefore, blackPts as 0 | 0.5 | 1);
+
+      const playerIsWhite = white.id === 'player';
+      const score = scoreOf(result, playerIsWhite);
+      const opponentRating = playerIsWhite ? blackBefore : whiteBefore;
+      const before = playerIsWhite ? whiteBefore : blackBefore;
+      const expectedScore = expected(before, opponentRating);
+      const after = playerIsWhite ? white.rating : black.rating;
+      const playerEloChange: SimRoundGame['playerEloChange'] = {
+        before,
+        after,
+        delta: after - before,
+        opponentRating,
+        expected: Number(expectedScore.toFixed(3)),
+        score
+      };
+      roundGames.push({ round, white: whiteOpp, black: blackOpp, result, movesUci, pgn, playerEloChange });
+    }
+  } finally {
+    if (engine) terminateEngine(engine);
+  }
+
+  standings.forEach((p) => {
+    p.buchholz = p.oppIds.reduce((acc, oppId) => acc + (standings.find((x) => x.id === oppId)?.score ?? 0), 0);
+  });
+  standings.sort((a, b) => b.score - a.score || b.buchholz - a.buchholz || b.rating - a.rating);
+  const isComplete = playerDone >= totalPlayerGames;
+  const participantCount = 2;
+  const prizePool = template.prizePool;
+  const paidPlaces = 1;
+  const placement = standings.findIndex((p) => p.id === 'player') + 1;
+  const playerScore = standings.find((p) => p.id === 'player')?.score ?? 0;
+  const playerRating = standings.find((p) => p.id === 'player')?.rating ?? state.publicRating;
+  const ratingDelta = playerRating - state.publicRating;
+  const prize = payoutForPlace(placement, prizePool, participantCount, paidPlaces);
+  const historyGames: GameRecord[] = roundGames.map((g, idx) => ({
+    id: `${template.id}_w${state.week}_g${idx}`,
+    white: g.white.name,
+    black: g.black.name,
+    result: g.result,
+    pgn: g.pgn,
+    round: g.round,
+    watched: false,
+    tournamentId: template.id
+  }));
+
+  const updated = structuredClone(state);
+  if (isComplete) {
+    const beforeSkills = structuredClone(state.skills);
+    updated.week += 1;
+    updated.ageYears = Number((updated.ageYears + 1 / 12).toFixed(2));
+    updated.money = Math.max(0, updated.money - template.entryFee + prize);
+    updated.fatigue = clamp(updated.fatigue + template.travelFatigue, 0, 100);
+    updated.reputation = clamp(updated.reputation + (placement === 1 ? 14 : 7), 0, 100);
+    updated.skills.resilience = clampSkillValue('resilience', updated.skills.resilience + Math.round(template.rounds * 1.1));
+    updated.skills.competitiveness = clampSkillValue('competitiveness', updated.skills.competitiveness + Math.round(template.rounds * 1.4));
+    updated.skills.studySkills = clampSkillValue('studySkills', updated.skills.studySkills + Math.round(template.rounds * 0.5));
+    const lossBonuses = applyRandomLossSkillBonuses(updated, roundGames, seed);
+    updated.recentSkillDeltas = {
+      openingElo: updated.skills.openingElo - beforeSkills.openingElo,
+      middlegameElo: updated.skills.middlegameElo - beforeSkills.middlegameElo,
+      endgameElo: updated.skills.endgameElo - beforeSkills.endgameElo,
+      resilience: updated.skills.resilience - beforeSkills.resilience,
+      competitiveness: updated.skills.competitiveness - beforeSkills.competitiveness,
+      studySkills: updated.skills.studySkills - beforeSkills.studySkills
+    };
+    updated.publicRating = playerRating;
+    updated.title = titleFromRating(updated.publicRating);
+    updated.confidence = clamp(updated.confidence + (ratingDelta > 0 ? 3 : ratingDelta < 0 ? -2 : 1), -20, 20);
+    if (placement === 1) {
+      updated.meta.worldChampionAchieved = true;
+    }
+    updated.history.tournaments.unshift({
+      id: `${template.id}_week_${state.week}`,
+      name: template.name,
+      week: state.week,
+      rounds: template.rounds,
+      placement,
+      score: playerScore,
+      ratingDelta,
+      prize,
+      games: historyGames
+    });
+    updated.history.tournaments = updated.history.tournaments.slice(0, 30);
+    updated.history.games.unshift(...historyGames);
+    updated.history.games = updated.history.games.slice(0, 120);
+    updated.meta.lastPlayedAt = new Date().toISOString();
+    updated.inbox.unshift(
+      placement === 1
+        ? `Month ${updated.week}: You won the World Championship match ${playerScore.toFixed(1)}-${(template.rounds - playerScore).toFixed(1)}.`
+        : `Month ${updated.week}: World Championship match finished, runner-up by score ${playerScore.toFixed(1)}/${template.rounds}.`
+    );
+    if (lossBonuses > 0) {
+      updated.inbox.unshift(`Month ${updated.week}: Learned from losses (+${lossBonuses} random skill points from lost games).`);
+    }
+    updated.inbox = updated.inbox.slice(0, MAX_INBOX_MONTHS);
+  }
+  const watchedCandidate = roundGames[rng.int(0, Math.max(0, roundGames.length - 1))] ?? roundGames[0]!;
+  onProgress?.({
+    playerDone,
+    playerTotal,
+    gamesDone,
+    gamesTotal,
+    round: Math.min(template.rounds, playerDone),
+    board: 1,
+    message: isComplete ? 'World Championship match complete.' : `Simulated ${playerDone}/${totalPlayerGames} championship games.`,
+    currentWhite: undefined,
+    currentBlack: undefined,
+    currentWhiteElo: undefined,
+    currentBlackElo: undefined,
+    currentPly: undefined,
+    currentFullMove: undefined,
+    evalWhiteCp: undefined
+  });
+
   return {
     updatedState: updated,
     standings,

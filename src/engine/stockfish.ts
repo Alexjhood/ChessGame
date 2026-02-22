@@ -24,6 +24,7 @@ export interface MoveTelemetry {
 
 export interface ChosenMove extends MoveChoice {
   telemetry: MoveTelemetry;
+  selectedRank: number;
 }
 
 interface Sub1350MoveMix {
@@ -34,10 +35,12 @@ interface Sub1350MoveMix {
 
 export function buildSub1350MoveMix(targetUciElo: number, baseInaccuracy: number, baseBlunder: number): Sub1350MoveMix {
   const spread = Math.max(0, getSimSettings().performance.sub1350DecisionSpread);
-  const under = clamp((1350 - targetUciElo) / (1350 - 600), 0, 1) * spread;
-  const second = clamp(baseInaccuracy + 0.24 * under, 0, 0.7);
-  const third = clamp(baseBlunder + 0.14 * under, 0, 0.45);
-  const fourth = clamp(0.1 * under, 0, 0.25);
+  const underLinear = clamp((1350 - targetUciElo) / (1350 - 700), 0, 1);
+  // Convex ramp: degradation accelerates as Elo drops further below 1350.
+  const under = clamp(underLinear * (1 + 0.85 * underLinear) * spread, 0, 1.35);
+  const second = clamp(baseInaccuracy + 0.26 * under, 0, 0.72);
+  const third = clamp(baseBlunder + 0.17 * under, 0, 0.5);
+  const fourth = clamp(0.13 * under, 0, 0.28);
   const total = second + third + fourth;
   if (total <= 0.95) return { second, third, fourth };
   const scale = 0.95 / total;
@@ -89,7 +92,7 @@ export async function chooseMove(
     const prepProxy = clamp((context.skills.openingElo - 800) / 1400, 0, 1);
     const bookMove = pickBookMove(book, context.playedMoves ?? [], prepProxy);
     if (bookMove && rng.next() < policy.pBook) {
-      return { uci: bookMove, cp: 15, reason: 'best', telemetry };
+      return { uci: bookMove, cp: 15, reason: 'best', telemetry, selectedRank: 1 };
     }
 
     if (!handle) {
@@ -120,19 +123,19 @@ export async function chooseMove(
 
     if (draw < p4 && sorted.length >= 4) {
       const pick = sorted[3]!;
-      return { uci: pick.uci, cp: pick.cp, reason: 'blunder', telemetry };
+      return { uci: pick.uci, cp: pick.cp, reason: 'blunder', telemetry, selectedRank: 4 };
     }
     if (draw < p4 + p3 && sorted.length >= 3) {
       const pick = sorted[2]!;
-      return { uci: pick.uci, cp: pick.cp, reason: 'blunder', telemetry };
+      return { uci: pick.uci, cp: pick.cp, reason: 'blunder', telemetry, selectedRank: 3 };
     }
     if (draw < p4 + p3 + p2 && sorted.length >= 2) {
       const pick = sorted[1]!;
-      return { uci: pick.uci, cp: pick.cp, reason: 'inaccuracy', telemetry };
+      return { uci: pick.uci, cp: pick.cp, reason: 'inaccuracy', telemetry, selectedRank: 2 };
     }
 
     const best = sorted[0]!;
-    return { uci: best.uci, cp: best.cp, reason: 'best', telemetry };
+    return { uci: best.uci, cp: best.cp, reason: 'best', telemetry, selectedRank: 1 };
   } catch (err) {
     throw err instanceof Error ? err : new Error('ENGINE_ANALYSIS_FAILED');
   }

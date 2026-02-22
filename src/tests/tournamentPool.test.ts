@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { tournamentTemplates } from '../sim/content/tournaments';
-import { monthlyTournamentPool } from '../sim/tournamentPool';
+import { monthlyTournamentPool, WORLD_CHAMPIONSHIP_TEMPLATE } from '../sim/tournamentPool';
 
 describe('monthlyTournamentPool', () => {
   it('returns stable results for same seed and month', () => {
@@ -23,5 +23,17 @@ describe('monthlyTournamentPool', () => {
   it('respects requested pool size', () => {
     const pool = monthlyTournamentPool(tournamentTemplates, 1, 88, 4);
     expect(pool).toHaveLength(4);
+  });
+
+  it('renames elite 2000+ events to real-event names for high-Elo careers', () => {
+    const pool = monthlyTournamentPool(tournamentTemplates, 2, 123, 6, 2100);
+    const elite = pool.filter((t) => t.avgOpponentRating >= 2000);
+    expect(elite.length).toBeGreaterThan(0);
+    expect(elite.every((t) => t.tier === 'Elite Real Event')).toBe(true);
+  });
+
+  it('injects world championship match at 2600+', () => {
+    const pool = monthlyTournamentPool(tournamentTemplates, 2, 123, 6, 2600);
+    expect(pool.some((t) => t.id === WORLD_CHAMPIONSHIP_TEMPLATE.id)).toBe(true);
   });
 });

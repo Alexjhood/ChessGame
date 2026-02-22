@@ -136,7 +136,8 @@ export function applyTrainingMonth(
   });
 
   const unusedCredits = Math.max(0, credits - applied.length);
-  const fatigueRecovery = unusedCredits * settings.training.fatigueRecoveryPerUnusedCredit;
+  const baseRestRecovery = credits === 0 && applied.length === 0 ? 10 : 0;
+  const fatigueRecovery = unusedCredits * settings.training.fatigueRecoveryPerUnusedCredit + baseRestRecovery;
   if (fatigueRecovery > 0) next.fatigue = clamp(next.fatigue - fatigueRecovery, 0, 100);
 
   next.week += 1;
@@ -153,8 +154,12 @@ export function applyTrainingMonth(
   };
 
   if (applied.length === 0) {
+    const restNote =
+      baseRestRecovery > 0
+        ? ` Included base rest recovery ${baseRestRecovery} (no training credits available).`
+        : '';
     next.inbox.unshift(
-      `Month ${next.week}: Training plan executed. Puzzle credits: ${puzzleCreditsEarned}. Coaching bought: ${coachingPurchases} ($${coachingCost}). Recovered ${fatigueRecovery} fatigue from ${unusedCredits} unused credits.`
+      `Month ${next.week}: Training plan executed. Puzzle credits: ${puzzleCreditsEarned}. Coaching bought: ${coachingPurchases} ($${coachingCost}). Recovered ${fatigueRecovery} fatigue from ${unusedCredits} unused credits.${restNote}`
     );
   } else {
     next.inbox.unshift(
@@ -173,7 +178,7 @@ export function createInitialState(seed = Date.now(), avatar: AvatarProfile = DE
   const base = Math.round(clamp(getSimSettings().career.startingElo, 600, 2600));
   const now = new Date().toISOString();
   return {
-    meta: { version: '1.0.0', seed, createdAt: now, lastPlayedAt: now },
+    meta: { version: '1.0.0', seed, createdAt: now, lastPlayedAt: now, welcomeSeen: false, worldChampionAchieved: false },
     week: 1,
     ageYears: 8,
     publicRating: base,

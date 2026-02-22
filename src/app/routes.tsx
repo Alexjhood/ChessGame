@@ -4,7 +4,8 @@
  */
 
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Chess } from 'chess.js';
 import {
   useActions,
@@ -101,17 +102,35 @@ function AvatarPreview({ avatar }: { avatar: AvatarProfile }) {
   );
 }
 
-function EloMeter({ label, value, delta }: { label: string; value: number; delta?: number }) {
+function EloMeter({ label, value, delta, description }: { label: string; value: number; delta?: number; description: string }) {
+  const [tipOpen, setTipOpen] = useState(false);
   const pct = Math.max(0, Math.min(100, ((value - 700) / 1600) * 100));
   return (
-    <div className="elo-meter">
+    <div
+      className="elo-meter"
+      onMouseEnter={() => setTipOpen(true)}
+      onMouseLeave={() => setTipOpen(false)}
+      onFocus={() => setTipOpen(true)}
+      onBlur={() => setTipOpen(false)}
+    >
       <div className="elo-head">
-        <span className="elo-title">{label}</span>
+        <span className="elo-title">
+          {label}
+          <button
+            type="button"
+            className="elo-info-btn"
+            aria-label={`${label} info`}
+            onClick={() => setTipOpen((v) => !v)}
+          >
+            i
+          </button>
+        </span>
         <strong>
           {value}
           {delta && delta > 0 ? <span className="elo-delta"> +{delta}</span> : null}
         </strong>
       </div>
+      {tipOpen ? <div className="elo-info-tip">{description}</div> : null}
       <div className="elo-track">
         <div className="elo-fill" style={{ width: `${pct}%` }} />
       </div>
@@ -197,6 +216,31 @@ function SkillTooltip({ skill, game }: { skill: keyof SkillRatings; game: GameSt
   );
 }
 
+function FloatingOverlayModal({
+  open,
+  ariaLabel,
+  onClose,
+  children
+}: {
+  open: boolean;
+  ariaLabel: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  if (!open || typeof document === 'undefined') return null;
+  return createPortal(
+    <div className="welcome-overlay" onClick={onClose} role="presentation">
+      <div className="welcome-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-label={ariaLabel}>
+        <button className="welcome-close" aria-label="Close popup" onClick={onClose}>
+          ×
+        </button>
+        {children}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 function HomeScreen() {
   const actions = useActions();
 
@@ -215,12 +259,20 @@ function HomeScreen() {
       <h1>Tiny Tactics Club</h1>
       <p>Guide your rising chess star month by month from local opens to world-class titles.</p>
       <div className="button-row">
-        <button onClick={() => actions.beginNewCareer()}>New Career</button>
+        <button
+          onClick={() => {
+            writeTutorialDismissed(false);
+            actions.beginNewCareer();
+          }}
+        >
+          New Career
+        </button>
         <button onClick={() => actions.continueCareer()}>Continue</button>
         <button onClick={() => actions.loadLocal()}>Load Save</button>
         <button
           onClick={() => {
             if (window.confirm('Clear your local save and return to a fresh start?')) {
+              writeTutorialDismissed(false);
               actions.wipeCareer();
             }
           }}
@@ -261,9 +313,41 @@ function DashboardScreen() {
   const tutorialActive = !tutorialDismissed && game.history.tournaments.length === 0 && game.week <= 2;
   const tutorialStepLabel = game.week <= 1 ? 'Training tutorial' : 'Beginner tournament tutorial';
   const fatigueBand = game.fatigue > 40 ? 'critical' : game.fatigue > 20 ? 'warning' : 'ok';
+  const showWelcomeIntro = !game.meta.welcomeSeen && game.history.tournaments.length === 0 && game.week === 1;
 
   return (
     <div className="screen dashboard">
+      <FloatingOverlayModal open={showWelcomeIntro} ariaLabel="Welcome to Tiny Tactics Club" onClose={() => actions.dismissWelcomeIntro()}>
+            <h2>Welcome to Tiny Tactics Club ♟️✨</h2>
+            <p>
+              Raise a young chess star from beginner to elite title level. Build skills month by month, then convert that growth
+              into real Elo in tournament play.
+            </p>
+            <div className="welcome-steps">
+              <div className="welcome-step">
+                <span>🧩</span>
+                <div>
+                  <strong>Solve puzzles</strong>
+                  <p>Complete puzzles to earn monthly training points.</p>
+                </div>
+              </div>
+              <div className="welcome-step">
+                <span>📈</span>
+                <div>
+                  <strong>Spend training points</strong>
+                  <p>Boost opening, middlegame, endgame, resilience, competitiveness, and study habits.</p>
+                </div>
+              </div>
+              <div className="welcome-step">
+                <span>🏆</span>
+                <div>
+                  <strong>Compete in tournaments</strong>
+                  <p>Win games to raise official Elo and climb from beginner titles toward master levels.</p>
+                </div>
+              </div>
+            </div>
+            <p className="cute-note">Tip: click anywhere outside this pop-up to close it.</p>
+      </FloatingOverlayModal>
       <div className="panel prodigy-card">
         <h2>{game.avatar.name} 🌟</h2>
         <AvatarPreview avatar={game.avatar} />
@@ -279,39 +363,41 @@ function DashboardScreen() {
 
       <div className="panel skill-panel">
         <h2>Skill Elos</h2>
-        <p className="cute-note">
-          Live games use these directly: opening (first opening-limit moves), middlegame (until move/material threshold),
-          and endgame. Resilience reduces fatigue errors; competitiveness gives comeback boost when behind in material.
-        </p>
         <EloMeter
           label="Opening"
           value={game.skills.openingElo}
           delta={game.recentSkillDeltas.openingElo ?? 0}
+          description={SKILL_DESCRIPTIONS.openingElo}
         />
         <EloMeter
           label="Middlegame"
           value={game.skills.middlegameElo}
           delta={game.recentSkillDeltas.middlegameElo ?? 0}
+          description={SKILL_DESCRIPTIONS.middlegameElo}
         />
         <EloMeter
           label="Endgame"
           value={game.skills.endgameElo}
           delta={game.recentSkillDeltas.endgameElo ?? 0}
+          description={SKILL_DESCRIPTIONS.endgameElo}
         />
         <EloMeter
           label="Resilience"
           value={game.skills.resilience}
           delta={game.recentSkillDeltas.resilience ?? 0}
+          description={SKILL_DESCRIPTIONS.resilience}
         />
         <EloMeter
           label="Competitiveness"
           value={game.skills.competitiveness}
           delta={game.recentSkillDeltas.competitiveness ?? 0}
+          description={SKILL_DESCRIPTIONS.competitiveness}
         />
         <EloMeter
           label="Study Skills"
           value={game.skills.studySkills}
           delta={game.recentSkillDeltas.studySkills ?? 0}
+          description={SKILL_DESCRIPTIONS.studySkills}
         />
       </div>
 
@@ -388,7 +474,17 @@ function DashboardScreen() {
               <button onClick={() => actions.loadLocal()}>Load Save</button>
               <button
                 onClick={() => {
+                  writeTutorialDismissed(false);
+                  setTutorialDismissed(false);
+                }}
+              >
+                Show Tutorial Again
+              </button>
+              <button
+                onClick={() => {
                   if (window.confirm('Restart career from age 8? This overwrites the current save.')) {
+                    writeTutorialDismissed(false);
+                    setTutorialDismissed(false);
                     actions.beginRestartCareer();
                   }
                 }}
@@ -398,6 +494,8 @@ function DashboardScreen() {
               <button
                 onClick={() => {
                   if (window.confirm('Fully wipe local save and return home?')) {
+                    writeTutorialDismissed(false);
+                    setTutorialDismissed(false);
                     actions.wipeCareer();
                   }
                 }}
@@ -1185,11 +1283,6 @@ function TrainingScreen() {
             <SkillTooltip key={skill} skill={skill} game={game} />
           ))}
         </div>
-        <p>
-          Monthly credits: <strong>{credits}</strong> (Base {baseCredits} + Coaching {plannedCoaching}) | Used:{' '}
-          <strong>{used}</strong> | Puzzle bonus: <strong>{puzzleCreditsEarned}</strong> | Remaining:{' '}
-          <strong>{credits - used}</strong>
-        </p>
         <p className={`cute-note training-guide ${shouldGuidePuzzles ? 'guide-puzzle' : 'guide-allocate'}`}>
           {shouldGuideRest
             ? 'Fatigue is high. Solve puzzles only if you want more options, then leave credits unspent and click Advance Month (Rest & Recover).'
@@ -1245,32 +1338,34 @@ function TrainingScreen() {
               {puzzleChallenge ? (
                 <div className="puzzle-board-wrap">
                   <p>
-                    Puzzle Ref: <strong>{puzzleRef(puzzleChallenge)}</strong> | Puzzle Elo:{' '}
-                    <strong>{puzzleChallenge.rating}</strong> | Solution progress: {puzzleCursor}/
-                    {puzzleChallenge.solution.length} (includes opening move) | You play:{' '}
-                    <strong>{puzzleSideToMove}</strong> (side to move)
+                    Puzzle Ref: {puzzleRef(puzzleChallenge)} | Puzzle Elo: {puzzleChallenge.rating} |{' '}
+                    <strong>Solution progress: {puzzleCursor}/{puzzleChallenge.solution.length}</strong> (includes opening move) |{' '}
+                    <strong>You play: {puzzleSideToMove}</strong> (side to move)
+                  </p>
+                  <p className="puzzle-guidance-line">
+                    <strong>Your turn.</strong> Choose a piece, then choose its destination square.
                   </p>
                   <p className="cute-note">
-                    Source ID: <strong>{puzzleChallenge.id}</strong>
+                    Source ID: {puzzleChallenge.id}
                     {puzzleChallenge.localRef ? (
                       <>
-                        {' '}| Local ref: <strong>{puzzleChallenge.localRef}</strong>
+                        {' '}| Local ref: {puzzleChallenge.localRef}
                       </>
                     ) : null}
                     {typeof puzzleChallenge.popularity === 'number' ? (
                       <>
-                        {' '}| Popularity: <strong>{puzzleChallenge.popularity}</strong>
+                        {' '}| Popularity: {puzzleChallenge.popularity}
                       </>
                     ) : null}
                     {typeof puzzleChallenge.nbPlays === 'number' ? (
                       <>
-                        {' '}| Plays: <strong>{puzzleChallenge.nbPlays}</strong>
+                        {' '}| Plays: {puzzleChallenge.nbPlays}
                       </>
                     ) : null}
                   </p>
                   <div className="puzzle-meta-wrap">
                     <div className="puzzle-meta-row">
-                      <strong>Themes:</strong>
+                      <span className="puzzle-meta-label">Themes:</span>
                       {(puzzleChallenge.themes ?? []).length > 0 ? (
                         <>
                           {(puzzleChallenge.themes ?? []).slice(0, 10).map((tag) => (
@@ -1287,7 +1382,7 @@ function TrainingScreen() {
                       )}
                     </div>
                     <div className="puzzle-meta-row">
-                      <strong>Opening tags:</strong>
+                      <span className="puzzle-meta-label">Opening tags:</span>
                       {(puzzleChallenge.openingTags ?? []).length > 0 ? (
                         <>
                           {(puzzleChallenge.openingTags ?? []).slice(0, 6).map((tag) => (
@@ -1367,6 +1462,10 @@ function TrainingScreen() {
               {allocationExpanded ? 'Collapse' : 'Expand'}
             </button>
           </div>
+          <p className="cute-note">
+            Credits this month: <strong>{credits}</strong> (Base {baseCredits} + Coaching {plannedCoaching} + Puzzle{' '}
+            {puzzleCreditsEarned}) | Used: <strong>{used}</strong> | Remaining: <strong>{credits - used}</strong>
+          </p>
           {allocationExpanded ? (
             <>
               <p>
@@ -1449,6 +1548,7 @@ function TournamentScreen() {
   const tournamentSim = useTournamentSim();
   const tournamentStartMode = useTournamentStartMode();
   const [tutorialDismissed, setTutorialDismissed] = useState<boolean>(() => readTutorialDismissed());
+  const [showCompletionPopup, setShowCompletionPopup] = useState(false);
 
   if (!game) return <Navigate to="/" replace />;
 
@@ -1463,9 +1563,29 @@ function TournamentScreen() {
   const totalPlayerGames = result?.totalPlayerGames ?? selectedTournament?.rounds ?? 0;
   const simulatedPlayerGames = result?.simulatedPlayerGames ?? 0;
   const visibleGames = playerGames;
+  const standingsPreview = useMemo(() => {
+    if (!result)
+      return [] as Array<{
+        standing: { name: string; score: number; rating: number; ratingDelta: number; isHuman?: boolean };
+        rank: number;
+      }>;
+    const all = result.standings;
+    if (all.length <= 10) {
+      return all.map((standing, idx) => ({ standing, rank: idx + 1 }));
+    }
+    const playerIdx = all.findIndex((s) => s.isHuman);
+    if (playerIdx < 0) {
+      return all.slice(0, 10).map((standing, idx) => ({ standing, rank: idx + 1 }));
+    }
+    const desired = 9; // 4 above + player + 4 below
+    const start = Math.max(0, playerIdx - 4);
+    const end = Math.min(all.length, start + desired);
+    const adjustedStart = Math.max(0, end - desired);
+    return all.slice(adjustedStart, end).map((standing, idx) => ({ standing, rank: adjustedStart + idx + 1 }));
+  }, [result]);
   const monthlyEvents = useMemo(
-    () => monthlyTournamentPool(tournamentTemplates, game.week, game.meta.seed, 6),
-    [game.meta.seed, game.week]
+    () => monthlyTournamentPool(tournamentTemplates, game.week, game.meta.seed, 6, game.publicRating),
+    [game.meta.seed, game.publicRating, game.week]
   );
   const beginnerTournament = useMemo(() => {
     const sorted = [...monthlyEvents].sort(
@@ -1526,9 +1646,49 @@ function TournamentScreen() {
   const tournamentStarted = Boolean(result) || Boolean(tournamentSim?.running);
   const tournamentComplete = Boolean(result?.isComplete);
   const mainBackLocked = tournamentStarted && !tournamentComplete;
+  const worldChampWon = Boolean(
+    result &&
+      result.template.id === 'world_championship_match' &&
+      result.isComplete &&
+      result.standings[0]?.isHuman
+  );
+
+  useEffect(() => {
+    if (worldChampWon) setShowCompletionPopup(true);
+  }, [worldChampWon]);
 
   return (
     <div className="screen">
+      <FloatingOverlayModal open={showCompletionPopup && worldChampWon} ariaLabel="Game completed" onClose={() => setShowCompletionPopup(false)}>
+            <h2>🏆 You Are World Champion!</h2>
+            <p>
+              Congratulations. You won the 12-game world championship match and completed the core game journey.
+            </p>
+            <div className="welcome-steps">
+              <div className="welcome-step">
+                <span>🧩</span>
+                <div>
+                  <strong>Puzzles solved</strong>
+                  <p>Your training pipeline turned into elite board strength.</p>
+                </div>
+              </div>
+              <div className="welcome-step">
+                <span>♟️</span>
+                <div>
+                  <strong>Tournaments conquered</strong>
+                  <p>You climbed all the way from youth events to title level.</p>
+                </div>
+              </div>
+              <div className="welcome-step">
+                <span>🌟</span>
+                <div>
+                  <strong>Career complete</strong>
+                  <p>You can keep playing and simulating as long as you like.</p>
+                </div>
+              </div>
+            </div>
+            <p className="cute-note">Click outside this pop-up to continue.</p>
+      </FloatingOverlayModal>
       {tournamentTutorialActive ? (
         <div className="panel tutorial-box">
           <h3>🎓 Beginner Tournament Tutorial</h3>
@@ -1652,6 +1812,7 @@ function TournamentScreen() {
             Final prize pool: ${result.prizePool} | Paid places: top {result.paidPlaces} of {result.standings.length}
           </p>
           {!result.isComplete ? <p className="cute-note">Provisional standings after simulated games.</p> : null}
+          <p className="cute-note">Showing your table window: up to 4 places above and 4 below your current rank.</p>
           <table>
             <thead>
               <tr>
@@ -1664,9 +1825,9 @@ function TournamentScreen() {
               </tr>
             </thead>
             <tbody>
-              {result.standings.slice(0, 10).map((s, idx) => (
-                <tr key={`${s.name}-${idx}`} className={s.isHuman ? 'highlight' : ''}>
-                  <td>{idx + 1}</td>
+              {standingsPreview.map(({ standing: s, rank }) => (
+                <tr key={`${s.name}-${rank}`} className={s.isHuman ? 'highlight' : ''}>
+                  <td>{rank}</td>
                   <td>{s.name}</td>
                   <td>{s.score.toFixed(1)}</td>
                   <td>{s.rating}</td>
@@ -1678,7 +1839,7 @@ function TournamentScreen() {
                     {s.ratingDelta > 0 ? '+' : ''}
                     {s.ratingDelta}
                   </td>
-                  <td>${payoutForPlace(idx + 1, result.prizePool, result.standings.length, result.paidPlaces)}</td>
+                  <td>${payoutForPlace(rank, result.prizePool, result.standings.length, result.paidPlaces)}</td>
                 </tr>
               ))}
             </tbody>

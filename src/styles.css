@@ -362,6 +362,7 @@ button:disabled {
 
 .elo-meter {
   margin-top: 0.48rem;
+  position: relative;
 }
 
 .elo-head {
@@ -374,6 +375,28 @@ button:disabled {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
+}
+
+.elo-info-btn {
+  min-width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  line-height: 1;
+  background: linear-gradient(145deg, #f4b160, #de8a37);
+}
+
+.elo-info-tip {
+  margin-top: 0.28rem;
+  margin-bottom: 0.28rem;
+  border: 1px dashed #d8b67d;
+  border-radius: 10px;
+  background: #fff4de;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.83rem;
+  color: #503b2a;
 }
 
 .elo-delta {
@@ -488,6 +511,83 @@ button:disabled {
   line-height: 1;
   background: linear-gradient(145deg, #ee8f45, #d96d2d);
   box-shadow: 0 2px 0 #ad4f1a;
+}
+
+.welcome-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background:
+    radial-gradient(circle at 18% 18%, rgba(255, 198, 104, 0.3), transparent 44%),
+    radial-gradient(circle at 82% 76%, rgba(100, 198, 255, 0.24), transparent 48%),
+    rgba(30, 20, 14, 0.42);
+}
+
+.welcome-modal {
+  width: min(680px, 96vw);
+  max-height: min(88vh, 760px);
+  overflow: auto;
+  position: relative;
+  border: 3px solid #f2b24f;
+  border-radius: 18px;
+  padding: 1rem 1rem 0.9rem;
+  background:
+    radial-gradient(circle at 22% 18%, rgba(255, 254, 241, 0.72), transparent 43%),
+    linear-gradient(145deg, #fff7d8, #ffe7bf);
+  box-shadow:
+    0 16px 36px rgba(74, 44, 17, 0.4),
+    0 0 0 6px rgba(255, 210, 122, 0.28);
+}
+
+.welcome-modal h2 {
+  margin: 0 0 0.3rem;
+  color: #5b2f1a;
+}
+
+.welcome-close {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.45rem;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  padding: 0;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.welcome-steps {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0.6rem 0;
+}
+
+.welcome-step {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 0.5rem;
+  align-items: start;
+  border: 1px dashed #dcb37a;
+  border-radius: 12px;
+  padding: 0.45rem 0.55rem;
+  background: rgba(255, 255, 255, 0.64);
+}
+
+.welcome-step span {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.welcome-step strong {
+  color: #5d3b23;
+}
+
+.welcome-step p {
+  margin: 0.1rem 0 0;
+  color: #5f4a39;
 }
 
 .grid-list {
@@ -853,6 +953,47 @@ ul {
   padding: 0.15rem 0.35rem;
 }
 
+.move-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  font-weight: 700;
+}
+
+.move-quality-icon {
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.move-chip.q1 .move-quality-icon,
+.move-quality-tag.q1 {
+  color: #1a954b;
+}
+
+.move-chip.q2 .move-quality-icon,
+.move-quality-tag.q2 {
+  color: #b98a05;
+}
+
+.move-chip.q3 .move-quality-icon,
+.move-quality-tag.q3 {
+  color: #c44343;
+}
+
+.move-chip.q4 .move-quality-icon,
+.move-quality-tag.q4 {
+  color: #161616;
+}
+
+.move-chip.q0 .move-quality-icon,
+.move-quality-tag.q0 {
+  color: #6f655a;
+}
+
+.move-quality-tag {
+  font-weight: 800;
+}
+
 .policy-strip {
   display: flex;
   flex-wrap: wrap;
@@ -1188,11 +1329,18 @@ details {
   color: #4f3a28;
 }
 
+.puzzle-meta-label {
+  color: #4f3a28;
+  font-size: 1.18rem;
+  font-weight: 600;
+}
+
 .puzzle-tag {
   border: 1px solid #d8b67d;
   border-radius: 999px;
-  padding: 0.12rem 0.42rem;
-  font-size: 0.75rem;
+  padding: 0.22rem 0.6rem;
+  font-size: 1rem;
+  font-weight: 500;
   background: #fff1d6;
   color: #4b3725;
 }
@@ -1206,6 +1354,11 @@ details {
   background: #f2ece1;
   border-color: #d3c6b1;
   color: #7b6a54;
+}
+
+.puzzle-guidance-line {
+  margin: 0.1rem 0 0.25rem;
+  font-size: 1rem;
 }
 
 .puzzle-fail-text {

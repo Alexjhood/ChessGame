@@ -61,6 +61,13 @@ describe('weekly training', () => {
     );
   });
 
+  it('applies base rest recovery when no training credits are available', () => {
+    const state = createInitialState(13);
+    state.fatigue = 40;
+    const next = applyTrainingMonth(state, [], 0);
+    expect(next.fatigue).toBe(30);
+  });
+
   it('coaching purchases add credits and use escalating cost', () => {
     const state = createInitialState(12);
     state.money = 500;

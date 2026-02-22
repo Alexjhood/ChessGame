@@ -72,6 +72,8 @@ export interface GameMeta {
   seed: number;
   createdAt: string;
   lastPlayedAt: string;
+  welcomeSeen?: boolean;
+  worldChampionAchieved?: boolean;
 }
 
 export interface GameState {

@@ -93,6 +93,7 @@ interface AppState {
     resetSimSettings: () => void;
     setView: (view: AppState['currentView']) => void;
     addWatchedGamePgn: (pgn: string, result: '1-0' | '0-1' | '1/2-1/2', white: string, black: string) => void;
+    dismissWelcomeIntro: () => void;
   };
 }
 
@@ -139,6 +140,8 @@ function normalizeGameState(state: GameState): GameState {
     next.trainingCounts[key] ??= 0;
   });
   next.skills.studySkills ??= 0;
+  next.meta.welcomeSeen ??= false;
+  next.meta.worldChampionAchieved ??= false;
   next.inbox = (next.inbox ?? []).slice(0, 3);
   return next;
 }
@@ -592,6 +595,15 @@ export const useAppStore = create<AppState>((set, get) => ({
         tournamentId: state.watchContext?.tournamentName ?? 'feature'
       });
       next.history.games = next.history.games.slice(0, 120);
+      set({ game: next, previousSkills: state.previousSkills });
+      localStorage.setItem(SAVE_KEY, JSON.stringify(next));
+    },
+    dismissWelcomeIntro: () => {
+      const state = get();
+      if (!state.game) return;
+      if (state.game.meta.welcomeSeen) return;
+      const next = structuredClone(state.game);
+      next.meta.welcomeSeen = true;
       set({ game: next, previousSkills: state.previousSkills });
       localStorage.setItem(SAVE_KEY, JSON.stringify(next));
     }

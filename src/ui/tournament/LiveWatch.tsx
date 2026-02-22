@@ -14,7 +14,6 @@ import { chooseMove, type MoveTelemetry } from '../../engine/stockfish';
 import { initEngine, terminateEngine, type EngineHandle } from '../../engine/stockfishWorker';
 import { materialDeficitPoints } from '../../chess/phases';
 import { buildMovePolicy } from '../../engine/policy';
-import { canTriggerStockfishBalanceDraw, stockfishDrawChanceAtFullMove } from '../../sim/stockfishDraw';
 
 function clamp01(n: number, min = 0, max = 1): number {
   return Math.max(min, Math.min(max, n));
@@ -36,8 +35,12 @@ export function LiveWatch({ context, onDone }: { context: WatchContext; onDone: 
   const [engineErrorDetail, setEngineErrorDetail] = useState('');
   const [speed, setSpeed] = useState(1);
   const [evalWhiteCpByPly, setEvalWhiteCpByPly] = useState<number[]>([]);
+  const [moveQualities, setMoveQualities] = useState<Array<1 | 2 | 3 | 4 | null>>(
+    context.game.movesUci ? Array.from({ length: context.game.movesUci.length }, () => null) : []
+  );
   const engineRef = useRef<EngineHandle | null>(null);
   const finishedRef = useRef(false);
+  const analysisErrorStreakRef = useRef(0);
   const movesRef = useRef<string[]>([]);
   const viewPlyRef = useRef(0);
 
@@ -72,10 +75,12 @@ export function LiveWatch({ context, onDone }: { context: WatchContext; onDone: 
 
   useEffect(() => {
     setMoves(context.game.movesUci ? [...context.game.movesUci] : []);
+    setMoveQualities(context.game.movesUci ? Array.from({ length: context.game.movesUci.length }, () => null) : []);
     setEvalWhiteCpByPly([]);
     setViewPly(0);
     setRunning(false);
     finishedRef.current = false;
+    analysisErrorStreakRef.current = 0;
   }, [context.game.movesUci, context.game.round, context.game.white.id, context.game.black.id]);
 
   useEffect(() => {
@@ -171,6 +176,7 @@ export function LiveWatch({ context, onDone }: { context: WatchContext; onDone: 
     }
     setStatus(`Game over: ${result}`);
     setRunning(false);
+    analysisErrorStreakRef.current = 0;
   };
 
   const tick = async () => {
@@ -217,9 +223,15 @@ export function LiveWatch({ context, onDone }: { context: WatchContext; onDone: 
         playedMoves: timeline.slice(0, currentPly),
         seed: Date.now() + currentPly * 17
       });
+      analysisErrorStreakRef.current = 0;
     } catch {
+      analysisErrorStreakRef.current += 1;
+      if (analysisErrorStreakRef.current < 3) {
+        setStatus(`Engine analysis hiccup. Retrying... (${analysisErrorStreakRef.current}/2)`);
+        return;
+      }
       setRunning(false);
-      setStatus('Engine analysis failed. Please retry.');
+      setStatus('Engine analysis failed repeatedly. Please retry.');
       return;
     }
 
@@ -234,23 +246,33 @@ export function LiveWatch({ context, onDone }: { context: WatchContext; onDone: 
       movesRef.current = nextMoves;
       viewPlyRef.current = nextMoves.length;
       setMoves(nextMoves);
+      setMoveQualities((prev) => [...prev.slice(0, currentPly), (choice.selectedRank >= 4 ? 4 : choice.selectedRank) as 1 | 2 | 3 | 4]);
       setViewPly(nextMoves.length);
       setEvalWhiteCpByPly((prev) => [...prev, turn === 'white' ? choice.cp : -choice.cp]);
       setTelemetryBySide((prev) => ({ ...prev, [turn]: choice.telemetry }));
       setStatus(`${side.name} played ${summary.san} (${choice.reason})`);
-      const fullMove = Math.ceil(nextMoves.length / 2);
-      const evalWhiteCp = turn === 'white' ? choice.cp : -choice.cp;
-      const drawChanceByMove = stockfishDrawChanceAtFullMove(fullMove);
-      if (drawChanceByMove > 0 && canTriggerStockfishBalanceDraw(evalWhiteCp) && Math.random() < drawChanceByMove) {
-        setStatus(
-          `${side.name} played ${summary.san} (${choice.reason}). Players agreed draw in a balanced position at move ${fullMove}.`
-        );
-        finishGame(chess, nextMoves);
+    } catch {
+      const legal = chess.moves({ verbose: true });
+      if (legal.length === 0) {
+        setStatus('No legal fallback move available. Ending game.');
+        finishGame(chess, timeline.slice(0, currentPly));
         return;
       }
-    } catch {
-      setStatus('Illegal move generated, ending game safely.');
-      finishGame(chess, timeline.slice(0, currentPly));
+      const fallback = legal[Math.floor(Math.random() * legal.length)]!;
+      const fallbackSummary = chess.move(fallback);
+      if (!fallbackSummary) {
+        setStatus('Fallback move failed, ending game safely.');
+        finishGame(chess, timeline.slice(0, currentPly));
+        return;
+      }
+      const fallbackUci = `${fallbackSummary.from}${fallbackSummary.to}${fallbackSummary.promotion ?? ''}`;
+      const nextMoves = [...timeline.slice(0, currentPly), fallbackUci];
+      movesRef.current = nextMoves;
+      viewPlyRef.current = nextMoves.length;
+      setMoves(nextMoves);
+      setMoveQualities((prev) => [...prev.slice(0, currentPly), 4]);
+      setViewPly(nextMoves.length);
+      setStatus('Engine returned invalid move. Applied random legal fallback.');
       return;
     }
 
@@ -353,6 +375,7 @@ export function LiveWatch({ context, onDone }: { context: WatchContext; onDone: 
           End
         </button>
         <button onClick={() => setSpeed(1)}>1x</button>
+        <button onClick={() => setSpeed(0.5)}>0.5x</button>
         <button onClick={() => setSpeed(2)}>2x</button>
         <button onClick={() => setSpeed(4)}>4x</button>
         <button onClick={() => void skipToResult()}>Skip to result</button>
@@ -367,6 +390,22 @@ export function LiveWatch({ context, onDone }: { context: WatchContext; onDone: 
       <p className="cute-note">
         Move position: {viewPly}/{moves.length}
       </p>
+      {viewPly > 0 ? (
+        <p className="cute-note">
+          Last move quality:{' '}
+          <span className={`move-quality-tag q${moveQualities[viewPly - 1] ?? 0}`}>
+            {moveQualities[viewPly - 1] === 1
+              ? '✅ top move'
+              : moveQualities[viewPly - 1] === 2
+                ? '❗ second best'
+                : moveQualities[viewPly - 1] === 3
+                  ? '❗ third best'
+                  : moveQualities[viewPly - 1] === 4
+                    ? '‼ lower than third'
+                    : '• not rated (replay)'}
+          </span>
+        </p>
+      ) : null}
       <div className="live-eval-panel">
         <h3>Live Engine Outlook</h3>
         {typeof evalCp === 'number' ? (
@@ -443,9 +482,17 @@ export function LiveWatch({ context, onDone }: { context: WatchContext; onDone: 
         })}
       </div>
       <div className="move-list">
-        {moves.slice(-24).map((move, idx) => (
-          <span key={`${move}-${idx}`}>{move}</span>
-        ))}
+        {moves.slice(-24).map((move, idx) => {
+          const quality = moveQualities[Math.max(0, moves.length - 24) + idx] ?? null;
+          return (
+            <span key={`${move}-${idx}`} className={`move-chip ${quality ? `q${quality}` : 'q0'}`}>
+              <span className="move-quality-icon">
+                {quality === 1 ? '✅' : quality === 2 ? '❗' : quality === 3 ? '❗' : quality === 4 ? '‼' : '•'}
+              </span>
+              {move}
+            </span>
+          );
+        })}
       </div>
       <button onClick={onDone}>Done</button>
     </section>
