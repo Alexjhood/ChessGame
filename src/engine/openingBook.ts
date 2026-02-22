@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Loads and samples opening book moves.
+ * Key Mechanics: Fetches openingBook data and provides early-game candidate moves before deeper engine search.
+ */
+
 export interface OpeningLine {
   movesUci: string[];
   tags: string[];

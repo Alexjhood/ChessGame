@@ -1,3 +1,8 @@
+/*
+ * File Purpose: High-level Stockfish game simulation helpers.
+ * Key Mechanics: Coordinates per-move analysis context, effective Elo settings, and timeline outputs for game replay/live views.
+ */
+
 import type { SkillRatings } from '../sim/models';
 import { clamp, createRng } from '../sim/rng';
 import { buildMovePolicy } from './policy';

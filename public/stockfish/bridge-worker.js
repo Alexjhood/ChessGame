@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Worker bridge that forwards UCI messages to Stockfish.
+ * Key Mechanics: Loads stockfish.js in worker scope, initializes engine factory, and relays message traffic/errors.
+ */
+
 let enginePromise = null;
 let engine = null;
 

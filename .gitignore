@@ -1,3 +1,6 @@
+# File Purpose: Ignore rules for generated/local-only files.
+# Key Mechanics: Keeps build artifacts, dependency folders, and large local analysis assets out of git history.
+
 # System files
 .DS_Store
 

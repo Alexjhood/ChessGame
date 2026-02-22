@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Determines opening/middlegame/endgame phase transitions.
+ * Key Mechanics: Applies move-count and material thresholds so phase-specific skill Elo can drive move quality.
+ */
+
 import { getSimSettings } from '../sim/settings';
 
 export type Phase = 'opening' | 'middlegame' | 'endgame';

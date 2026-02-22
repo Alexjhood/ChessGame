@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Opponent generation tests.
+ * Key Mechanics: Checks rating/skill coherence and bounds for generated competitor profiles.
+ */
+
 import { describe, expect, it } from 'vitest';
 import { generateOpponents } from '../sim/opponents';
 

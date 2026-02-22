@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Monthly training progression and credit application.
+ * Key Mechanics: Handles puzzle/coaching credits, skill gains, fatigue recovery from unused credits, and inbox history messages.
+ */
+
 import type { GameState, SkillRatings, TrainingModule } from './models';
 import { clamp, createRng } from './rng';
 import { getSimSettings } from './settings';

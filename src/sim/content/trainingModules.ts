@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Training module catalog for skill allocation.
+ * Key Mechanics: Maps each module to focused skill and metadata used in training planning UI.
+ */
+
 import type { TrainingModule } from '../models';
 
 export const trainingModules: TrainingModule[] = [

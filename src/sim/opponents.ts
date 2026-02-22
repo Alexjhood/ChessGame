@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Opponent generation and calibration helpers.
+ * Key Mechanics: Creates realistic opponents whose skill breakdown aligns with official Elo while preserving variance.
+ */
+
 import type { Opponent, SkillRatings, StyleTag } from './models';
 import { clamp, createRng } from './rng';
 

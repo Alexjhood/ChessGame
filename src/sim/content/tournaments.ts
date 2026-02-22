@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Tournament template content definitions.
+ * Key Mechanics: Provides event pools with fees, field sizes, rounds, and prize characteristics consumed each month.
+ */
+
 import type { TournamentTemplate } from '../models';
 
 export const tournamentTemplates: TournamentTemplate[] = [

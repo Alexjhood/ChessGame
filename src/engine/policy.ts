@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Move-choice policy from skill, fatigue, and confidence.
+ * Key Mechanics: Transforms player attributes into best/inaccuracy/blunder probabilities used when selecting engine lines.
+ */
+
 import type { SkillRatings } from '../sim/models';
 import { detectPhase, type Phase } from '../chess/phases';
 import { clamp, lerp } from '../sim/rng';

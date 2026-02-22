@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Integration tests for engine-to-simulation wiring.
+ * Key Mechanics: Validates move generation flow and stockfish integration assumptions at system boundaries.
+ */
+
 import { Chess } from 'chess.js';
 import { describe, expect, it } from 'vitest';
 import { chooseMove } from '../engine/stockfish';

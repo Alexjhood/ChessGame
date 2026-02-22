@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Tournament skill-impact tests.
+ * Key Mechanics: Confirms skill-based effective Elo influences result sampling as designed.
+ */
+
 import { describe, expect, it } from 'vitest';
 import { tournamentTemplates } from '../sim/content/tournaments';
 import { runSwissTournament } from '../sim/tournaments';

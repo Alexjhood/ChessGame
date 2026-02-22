@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Title ladder and progression thresholds.
+ * Key Mechanics: Defines display order, Elo requirements, and styling metadata for career title journey UI.
+ */
+
 import type { Title } from './models';
 
 export interface TitleLevel {

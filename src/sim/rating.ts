@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Elo rating update calculations.
+ * Key Mechanics: Implements expected-score and K-factor style updates for post-result rating adjustments.
+ */
+
 import { clamp } from './rng';
 
 export function expectedScore(playerRating: number, opponentRating: number): number {

@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Monthly tournament availability selection.
+ * Key Mechanics: Builds rotating event sets per month/seed so each month offers fresh tournament choices.
+ */
+
 import type { TournamentTemplate } from './models';
 import { createRng } from './rng';
 

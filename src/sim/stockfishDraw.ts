@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Late-game draw trigger mechanics for stockfish runs.
+ * Key Mechanics: Applies configurable post-move draw probabilities when engine evaluation indicates near-equality.
+ */
+
 import { getSimSettings } from './settings';
 
 function clamp01(n: number): number {

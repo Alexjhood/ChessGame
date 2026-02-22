@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Monthly training tests.
+ * Key Mechanics: Covers training gains, coaching credits, rest-based fatigue recovery, and progression bookkeeping.
+ */
+
 import { describe, expect, it } from 'vitest';
 import { trainingModules } from '../sim/content/trainingModules';
 import {

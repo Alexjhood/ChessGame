@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Phase transition tests.
+ * Key Mechanics: Confirms opening/middlegame/endgame boundaries from move and material thresholds.
+ */
+
 import { describe, expect, it } from 'vitest';
 import { detectPhase } from '../chess/phases';
 

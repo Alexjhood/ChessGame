@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Lost-game bonus tests.
+ * Key Mechanics: Ensures random skill-point bonuses from losses are applied and recorded correctly.
+ */
+
 import { describe, expect, it } from 'vitest';
 import { tournamentTemplates } from '../sim/content/tournaments';
 import { runSwissTournament } from '../sim/tournaments';

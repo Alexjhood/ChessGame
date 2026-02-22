@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Standings and table tests.
+ * Key Mechanics: Validates ranking order, tie handling, and displayed standings completeness.
+ */
+
 import { describe, expect, it } from 'vitest';
 import { tournamentTemplates } from '../sim/content/tournaments';
 import { runSwissTournament } from '../sim/tournaments';

@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Move-policy probability tests.
+ * Key Mechanics: Ensures fatigue/resilience/confidence adjustments affect blunder and inaccuracy rates as expected.
+ */
+
 import { describe, expect, it } from 'vitest';
 import { buildMovePolicy } from '../engine/policy';
 import type { SkillRatings } from '../sim/models';

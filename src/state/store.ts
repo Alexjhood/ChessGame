@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Central game state store and actions.
+ * Key Mechanics: Manages persistence, route transitions, training/tournament actions, simulation settings, and replay contexts.
+ */
+
 import { create } from 'zustand';
 import { tournamentTemplates } from '../sim/content/tournaments';
 import { trainingModules } from '../sim/content/trainingModules';

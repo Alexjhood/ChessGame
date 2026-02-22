@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Browser worker bridge for UCI engine sessions.
+ * Key Mechanics: Initializes worker lifecycle, probes capabilities, applies UCI_Elo settings, and runs timed position analysis.
+ */
+
 import { parseInfoLine } from './parseUci';
 
 export interface AnalysisCandidate {

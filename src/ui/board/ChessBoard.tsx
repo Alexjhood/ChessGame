@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Reusable chessboard renderer component.
+ * Key Mechanics: Draws board orientation, piece set, move highlights/arrows, and captured-piece side panels for puzzle/live views.
+ */
+
 const pieces: Record<string, string> = {
   p: '♟',
   r: '♜',

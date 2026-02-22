@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Core domain model types for game state.
+ * Key Mechanics: Defines player stats, tournaments, game logs, and shared interfaces used across sim, store, and UI.
+ */
+
 export type Title = 'None' | 'CM' | 'FM' | 'IM' | 'GM' | 'WC';
 
 export type StyleTag = 'Solid' | 'Tactical' | 'Aggressive' | 'Endgame';

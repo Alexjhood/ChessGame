@@ -1,3 +1,8 @@
+/*
+ * File Purpose: PGN formatting and parsing utilities.
+ * Key Mechanics: Converts move sequences into readable notation for replay and post-game inspection.
+ */
+
 import { Chess } from 'chess.js';
 
 export function pgnFromMoves(movesUci: string[]): string {

@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Defines linting behavior for the TypeScript/React codebase.
+ * Key Mechanics: Configures parser/plugins/rules so engine, sim, and UI code maintain consistent quality checks.
+ */
+
 module.exports = {
   root: true,
   parser: '@typescript-eslint/parser',

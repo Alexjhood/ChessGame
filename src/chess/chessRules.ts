@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Chess rule helpers used by simulation and UI review.
+ * Key Mechanics: Wraps move legality checks and game-end state logic for consistent rule evaluation.
+ */
+
 import { Chess, type Move } from 'chess.js';
 
 export interface MoveSummary {

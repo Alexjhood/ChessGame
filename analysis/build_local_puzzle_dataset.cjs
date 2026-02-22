@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Builds a local curated puzzle dataset from Lichess CSV extracts.
+ * Key Mechanics: Parses source puzzle rows, filters/sorts by Elo/popularity bands, and emits app-ready JSON references.
+ */
+
 #!/usr/bin/env node
 /* eslint-disable no-console */
 const fs = require('fs');

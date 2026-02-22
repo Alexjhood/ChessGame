@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Simulation settings defaults and normalization.
+ * Key Mechanics: Stores tunable gameplay parameters and guards persisted settings with type/number normalization.
+ */
+
 export interface SimSettings {
   career: {
     startingElo: number;

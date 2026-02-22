@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Avatar profile model and generation utilities.
+ * Key Mechanics: Defines customizable character attributes and helpers used during new/restart career setup.
+ */
+
 export type AvatarHairStyle = 'Short' | 'Bob' | 'Curly' | 'Spiky';
 export type AvatarGender = 'male' | 'female';
 

@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Low-Elo stockfish behavior tests.
+ * Key Mechanics: Verifies sub-1350 degradation path increases non-best move choices progressively.
+ */
+
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SIM_SETTINGS, setSimSettings } from '../sim/settings';
 import { buildSub1350MoveMix } from '../engine/stockfish';

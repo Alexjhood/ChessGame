@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Batch simulation calibration tests for stockfish Elo behavior.
+ * Key Mechanics: Runs many pairings to compare observed score rates vs Elo gap expectations.
+ */
+
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { Chess } from 'chess.js';

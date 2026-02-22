@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Puzzle dataset loading and challenge selection.
+ * Key Mechanics: Selects local puzzles by Elo bands, tracks cache/diagnostics, and returns playable challenge payloads.
+ */
+
 import { Chess } from 'chess.js';
 import localPuzzlePoolRaw from '../content/lichess_local_puzzles.json';
 

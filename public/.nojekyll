@@ -1,0 +1,3 @@
+# File Purpose: Disables Jekyll processing on GitHub Pages.
+# Key Mechanics: Ensures static assets and paths are served exactly as built.
+

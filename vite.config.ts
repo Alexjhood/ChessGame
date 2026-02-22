@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Vite build/dev configuration.
+ * Key Mechanics: Sets Pages base path, COOP/COEP headers for local SAB support, React plugin, and test environment.
+ */
+
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 

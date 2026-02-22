@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Deterministic random number utilities.
+ * Key Mechanics: Provides seeded random helpers for reproducible tournament, training, and reward sampling.
+ */
+
 export interface Rng {
   next: () => number;
   int: (min: number, max: number) => number;

@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Parses UCI info lines into structured evaluations.
+ * Key Mechanics: Extracts pv/multipv/score fields from Stockfish output for candidate ranking and diagnostics.
+ */
+
 export interface ParsedLine {
   multipv: number;
   cp?: number;

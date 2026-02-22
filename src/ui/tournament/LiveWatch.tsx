@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Live and replay game viewer for player boards.
+ * Key Mechanics: Runs/plays back move timelines with controls, speed, engine status, per-side stats, and score visualization.
+ */
+
 import { Chess } from 'chess.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { applyUciMove, gameResult } from '../../chess/chessRules';

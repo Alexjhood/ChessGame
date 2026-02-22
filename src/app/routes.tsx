@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Primary route and screen composition for gameplay.
+ * Key Mechanics: Defines home/dashboard/training/tournament/live flows, puzzle interactions, controls, and tutorial sequencing.
+ */
+
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Chess } from 'chess.js';
@@ -255,6 +260,7 @@ function DashboardScreen() {
   }, []);
   const tutorialActive = !tutorialDismissed && game.history.tournaments.length === 0 && game.week <= 2;
   const tutorialStepLabel = game.week <= 1 ? 'Training tutorial' : 'Beginner tournament tutorial';
+  const fatigueBand = game.fatigue > 40 ? 'critical' : game.fatigue > 20 ? 'warning' : 'ok';
 
   return (
     <div className="screen dashboard">
@@ -357,6 +363,14 @@ function DashboardScreen() {
         <StatRow label="Reputation" value={game.reputation} />
         <StatRow label="Fatigue" value={game.fatigue} />
         <StatRow label="Confidence" value={game.confidence} />
+        {fatigueBand !== 'ok' ? (
+          <p className={`fatigue-alert fatigue-alert-${fatigueBand}`}>
+            {fatigueBand === 'critical'
+              ? 'Critical fatigue (>40): high blunder risk. You should rest this month.'
+              : 'Fatigue warning (>20): consider resting this month to recover.'}{' '}
+            Open <strong>Train</strong>, leave credits unspent, then click <strong>Advance Month (Rest & Recover)</strong>.
+          </p>
+        ) : null}
       </div>
 
       <div className="panel control-dock">
@@ -1011,6 +1025,9 @@ function TrainingScreen() {
   const shouldGuidePuzzles = remainingPuzzleAttempts > 0;
   const shouldGuideAllocation = remainingPuzzleAttempts <= 0;
   const highlightStartTrainingMonth = remainingPuzzleAttempts === 0 && credits - used === 0;
+  const fatigueBand = game.fatigue > 40 ? 'critical' : game.fatigue > 20 ? 'warning' : 'ok';
+  const shouldGuideRest = fatigueBand !== 'ok';
+  const highlightRestAction = shouldGuideRest && remainingPuzzleAttempts === 0;
   const highlightPuzzleCollapse = shouldGuideAllocation && puzzleExpanded;
   const highlightAllocationExpand = shouldGuideAllocation && !allocationExpanded;
   const highlightPuzzleButtons = shouldGuidePuzzles && puzzleExpanded;
@@ -1121,6 +1138,15 @@ function TrainingScreen() {
         </div>
       ) : null}
       <h2>Training Picker</h2>
+      {shouldGuideRest ? (
+        <div className={`panel fatigue-alert fatigue-alert-${fatigueBand}`}>
+          <h3>{fatigueBand === 'critical' ? 'Fatigue Critical' : 'Fatigue Warning'}</h3>
+          <p>
+            Current fatigue: <strong>{game.fatigue}</strong>. To rest: keep some or all credits unspent, then click{' '}
+            <strong>Advance Month (Rest & Recover)</strong>. Each unspent credit reduces fatigue.
+          </p>
+        </div>
+      ) : null}
       {trainingTutorialActive ? (
         <div className="panel tutorial-box">
           <h3>🎓 Training Tutorial</h3>
@@ -1164,7 +1190,9 @@ function TrainingScreen() {
           <strong>{credits - used}</strong>
         </p>
         <p className={`cute-note training-guide ${shouldGuidePuzzles ? 'guide-puzzle' : 'guide-allocate'}`}>
-          {shouldGuidePuzzles
+          {shouldGuideRest
+            ? 'Fatigue is high. Solve puzzles only if you want more options, then leave credits unspent and click Advance Month (Rest & Recover).'
+            : shouldGuidePuzzles
             ? 'Next step: solve puzzles first to earn training credits.'
             : highlightStartTrainingMonth
               ? 'Great. You have used all puzzle attempts and spent all credits. Start the training month.'
@@ -1391,7 +1419,7 @@ function TrainingScreen() {
         </p>
         <div className="button-row">
           <button
-            className={highlightStartTrainingMonth ? 'guided-target' : ''}
+            className={highlightStartTrainingMonth || highlightRestAction ? 'guided-target' : ''}
             onClick={() => {
               actions.trainMonth(selectedModules, plannedCoaching, puzzleCreditsEarned);
               clearPlan();

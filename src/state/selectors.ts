@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Zustand selectors for route components.
+ * Key Mechanics: Exposes stable hooks to read focused slices of app state with minimal coupling.
+ */
+
 import { useAppStore } from './store';
 
 export const useGame = () => useAppStore((s) => s.game);

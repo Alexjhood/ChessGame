@@ -1,3 +1,6 @@
+<!-- File Purpose: Product specification for the chess career simulator. -->
+<!-- Key Mechanics: Captures feature intent, progression systems, and simulation expectations that guided implementation. -->
+
 # Prodigy Chess Tycoon — Codex Build Spec (Web v1)
 
 ## 0) One-line pitch

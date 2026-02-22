@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Tournament simulation engine.
+ * Key Mechanics: Simulates pairings/results, supports Elo-only and Stockfish paths, tracks standings, payouts, fatigue, and logs.
+ */
+
 import type { GameRecord, GameState, Opponent, SwissPlayer, TournamentTemplate } from './models';
 import { Chess } from 'chess.js';
 import { applyUciMove, gameResult } from '../chess/chessRules';

@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Puzzle selection and parsing tests.
+ * Key Mechanics: Validates local puzzle loading, Elo-band filtering, and challenge payload structure.
+ */
+
 import { describe, expect, it } from 'vitest';
 import { puzzleLambdaForElo } from '../sim/weekly';
 

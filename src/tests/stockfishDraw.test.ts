@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Stockfish draw-trigger tests.
+ * Key Mechanics: Checks configurable late-move draw probability conditions and trigger bounds.
+ */
+
 import { describe, expect, it } from 'vitest';
 import { setSimSettings, DEFAULT_SIM_SETTINGS } from '../sim/settings';
 import { canTriggerStockfishBalanceDraw, stockfishDrawChanceAtFullMove } from '../sim/stockfishDraw';

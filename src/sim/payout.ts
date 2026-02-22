@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Prize pool and payout distribution math.
+ * Key Mechanics: Computes pool ranges, paid places, and per-place payouts from entry fees and randomized multipliers.
+ */
+
 import { clamp, createRng } from './rng';
 
 export const PRIZE_MULTIPLIER_MIN = 0.75;

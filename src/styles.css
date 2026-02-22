@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Global visual system and component styles.
+ * Key Mechanics: Defines colorful theme tokens, layout grids, board/puzzle/tournament styling, and guided-state highlights.
+ */
+
 :root {
   --bg: #fff2d7;
   --bg-accent: #ffd8b5;
@@ -395,6 +400,27 @@ button:disabled {
   border: 1px dashed #ebb56a;
   border-radius: 10px;
   padding: 0.4rem 0.55rem;
+}
+
+.fatigue-alert {
+  margin-top: 0.6rem;
+  border-radius: 12px;
+  padding: 0.55rem 0.65rem;
+  border: 2px solid;
+}
+
+.fatigue-alert h3 {
+  margin-bottom: 0.25rem;
+}
+
+.fatigue-alert-warning {
+  background: #fff7de;
+  border-color: #e4b14d;
+}
+
+.fatigue-alert-critical {
+  background: #ffe8e4;
+  border-color: #d86a58;
 }
 
 .tutorial-box {

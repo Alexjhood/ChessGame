@@ -1,3 +1,6 @@
+# File Purpose: Deploys the built app to GitHub Pages from main.
+# Key Mechanics: Installs dependencies, runs production build, uploads dist as Pages artifact, and publishes via deploy-pages action.
+
 name: Deploy to GitHub Pages
 
 on:

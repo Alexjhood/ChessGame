@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Elo formula tests.
+ * Key Mechanics: Checks expected-score and rating delta behavior against known matchup outcomes.
+ */
+
 import { describe, expect, it } from 'vitest';
 import { expectedScore, kFactor, updateElo } from '../sim/rating';
 

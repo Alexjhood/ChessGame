@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Prize payout tests.
+ * Key Mechanics: Verifies payout scaling, paid-place ranges, and distribution consistency across field sizes.
+ */
+
 import { describe, expect, it } from 'vitest';
 import {
   PAID_PLACES_MIN_RATIO,

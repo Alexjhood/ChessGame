@@ -1,3 +1,8 @@
+/*
+ * File Purpose: Monthly pool generation tests.
+ * Key Mechanics: Checks event rotation, constraints, and deterministic selection behavior from seed/week inputs.
+ */
+
 import { describe, expect, it } from 'vitest';
 import { tournamentTemplates } from '../sim/content/tournaments';
 import { monthlyTournamentPool } from '../sim/tournamentPool';
