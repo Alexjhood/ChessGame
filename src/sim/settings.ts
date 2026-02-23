@@ -21,6 +21,8 @@ export interface SimSettings {
     fatigueRecoveryPerUnusedCredit: number;
     coachingBaseCost: number;
     coachingCostStep: number;
+    workBaseIncome: number;
+    workIncomeStep: number;
     puzzleAttemptStudyStep: number;
     puzzleLambdaBase: number;
     puzzleLambdaStep: number;
@@ -63,6 +65,8 @@ export const DEFAULT_SIM_SETTINGS: SimSettings = {
     fatigueRecoveryPerUnusedCredit: 10,
     coachingBaseCost: 50,
     coachingCostStep: 25,
+    workBaseIncome: 25,
+    workIncomeStep: 10,
     puzzleAttemptStudyStep: 100,
     puzzleLambdaBase: 1,
     puzzleLambdaStep: 1,
@@ -158,6 +162,8 @@ export function sanitizeSimSettings(raw: unknown): SimSettings {
       fatigueRecoveryPerUnusedCredit: Number(merged.training.fatigueRecoveryPerUnusedCredit),
       coachingBaseCost: Number(merged.training.coachingBaseCost),
       coachingCostStep: Number(merged.training.coachingCostStep),
+      workBaseIncome: Number(merged.training.workBaseIncome),
+      workIncomeStep: Number(merged.training.workIncomeStep),
       puzzleAttemptStudyStep: Number(merged.training.puzzleAttemptStudyStep),
       puzzleLambdaBase: Number(merged.training.puzzleLambdaBase),
       puzzleLambdaStep: Number(merged.training.puzzleLambdaStep),

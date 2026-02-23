@@ -68,6 +68,20 @@ describe('weekly training', () => {
     expect(next.fatigue).toBe(30);
   });
 
+  it('allows spending month working for escalating income instead of rest', () => {
+    const state = createInitialState(14);
+    state.money = 100;
+    state.fatigue = 40;
+    const first = applyTrainingMonth(state, [], 0, 0, 'work');
+    expect(first.money).toBe(125);
+    expect(first.workMonths).toBe(1);
+    expect(first.fatigue).toBe(40);
+
+    const second = applyTrainingMonth(first, [], 0, 0, 'work');
+    expect(second.money).toBe(160);
+    expect(second.workMonths).toBe(2);
+  });
+
   it('coaching purchases add credits and use escalating cost', () => {
     const state = createInitialState(12);
     state.money = 500;

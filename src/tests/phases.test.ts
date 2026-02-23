@@ -18,7 +18,7 @@ describe('phase detection', () => {
   });
 
   it('detects middlegame otherwise', () => {
-    const fen = 'r1bq1rk1/pp2ppbp/2np1np1/2p5/2PPP3/2N1BN2/PP1Q1PPP/R3KB1R w KQ - 2 14';
+    const fen = 'r1bq1rk1/pp2ppbp/2np1np1/2p5/2PPP3/2N1BN2/PP1Q1PPP/R3KB1R w KQ - 2 24';
     expect(detectPhase(fen)).toBe('middlegame');
   });
 });

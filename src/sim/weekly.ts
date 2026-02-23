@@ -6,7 +6,7 @@
 import type { GameState, SkillRatings, TrainingModule } from './models';
 import { clamp, createRng } from './rng';
 import { getSimSettings } from './settings';
-import { titleFromRating } from './titles';
+import { emptyNormProgress, titleFromProgress } from './titles';
 import { DEFAULT_AVATAR, type AvatarProfile } from './avatar';
 
 const MAX_INBOX_MONTHS = 3;
@@ -77,6 +77,11 @@ export function coachingCostForBatch(priorPurchases: number, count: number): num
   return total;
 }
 
+export function workIncomeForMonth(priorWorkMonths: number): number {
+  const settings = getSimSettings();
+  return Math.max(0, settings.training.workBaseIncome + settings.training.workIncomeStep * Math.max(0, priorWorkMonths));
+}
+
 export function maxAffordableCoachingPurchases(money: number, priorPurchases: number, requested: number): number {
   let spent = 0;
   let affordable = 0;
@@ -116,7 +121,8 @@ export function applyTrainingMonth(
   state: GameState,
   modules: TrainingModule[],
   requestedCoachingPurchases = 0,
-  puzzleCreditsEarned = 0
+  puzzleCreditsEarned = 0,
+  mode: 'rest' | 'work' = 'rest'
 ): GameState {
   const settings = getSimSettings();
   const next = structuredClone(state);
@@ -136,13 +142,24 @@ export function applyTrainingMonth(
   });
 
   const unusedCredits = Math.max(0, credits - applied.length);
-  const baseRestRecovery = credits === 0 && applied.length === 0 ? 10 : 0;
+  const baseRestRecovery = mode === 'rest' && credits === 0 && applied.length === 0 ? 10 : 0;
   const fatigueRecovery = unusedCredits * settings.training.fatigueRecoveryPerUnusedCredit + baseRestRecovery;
   if (fatigueRecovery > 0) next.fatigue = clamp(next.fatigue - fatigueRecovery, 0, 100);
+  const workIncome = mode === 'work' && applied.length === 0 ? workIncomeForMonth(state.workMonths ?? 0) : 0;
+  if (workIncome > 0) {
+    next.money += workIncome;
+    next.workMonths = (next.workMonths ?? 0) + 1;
+  }
 
   next.week += 1;
   next.ageYears = Number((next.ageYears + 1 / 12).toFixed(2));
-  next.title = titleFromRating(next.publicRating);
+  next.title = titleFromProgress({
+    rating: next.publicRating,
+    gender: next.avatar.gender,
+    norms: next.normProgress,
+    ratedGamesPlayed: next.ratedGamesPlayed,
+    worldChampionAchieved: next.meta.worldChampionAchieved
+  });
   next.meta.lastPlayedAt = new Date().toISOString();
   next.recentSkillDeltas = {
     openingElo: next.skills.openingElo - beforeSkills.openingElo,
@@ -158,8 +175,9 @@ export function applyTrainingMonth(
       baseRestRecovery > 0
         ? ` Included base rest recovery ${baseRestRecovery} (no training credits available).`
         : '';
+    const workNote = workIncome > 0 ? ` Earned $${workIncome} by working this month.` : '';
     next.inbox.unshift(
-      `Month ${next.week}: Training plan executed. Puzzle credits: ${puzzleCreditsEarned}. Coaching bought: ${coachingPurchases} ($${coachingCost}). Recovered ${fatigueRecovery} fatigue from ${unusedCredits} unused credits.${restNote}`
+      `Month ${next.week}: Training plan executed. Puzzle credits: ${puzzleCreditsEarned}. Coaching bought: ${coachingPurchases} ($${coachingCost}). Recovered ${fatigueRecovery} fatigue from ${unusedCredits} unused credits.${restNote}${workNote}`
     );
   } else {
     next.inbox.unshift(
@@ -187,8 +205,11 @@ export function createInitialState(seed = Date.now(), avatar: AvatarProfile = DE
     reputation: 0,
     fatigue: 0,
     confidence: 0,
+    ratedGamesPlayed: 0,
     coachingPurchases: 0,
+    workMonths: 0,
     avatar,
+    normProgress: emptyNormProgress(),
     skills: {
       openingElo: base,
       middlegameElo: base,
@@ -215,6 +236,6 @@ export function createInitialState(seed = Date.now(), avatar: AvatarProfile = DE
     },
     inventory: { tools: [], coaches: [] },
     history: { tournaments: [], games: [], sponsors: [] },
-    inbox: ['Welcome to your first month as a chess prodigy manager.']
+    inbox: ['Welcome to your first month in Tiny Tactics Club.']
   };
 }

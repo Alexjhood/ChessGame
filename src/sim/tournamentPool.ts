@@ -21,6 +21,8 @@ export const WORLD_CHAMPIONSHIP_TEMPLATE: TournamentTemplate = {
   id: 'world_championship_match',
   name: 'World Championship Match',
   tier: 'World Championship',
+  format: 'round_robin',
+  fieldSize: 2,
   rounds: 12,
   avgOpponentRating: 2750,
   ratingStdDev: 35,

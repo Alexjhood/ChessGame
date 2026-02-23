@@ -13,6 +13,7 @@ import { DEFAULT_SIM_SETTINGS, sanitizeSimSettings, setSimSettings, type SimSett
 import { DEFAULT_AVATAR, type AvatarProfile } from '../sim/avatar';
 import { generateOpponents } from '../sim/opponents';
 import { createRng } from '../sim/rng';
+import { normalizeNormProgress } from '../sim/titles';
 
 const SAVE_KEY = 'prodigy_chess_tycoon_save_v1';
 const SETTINGS_KEY = 'prodigy_chess_tycoon_settings_v1';
@@ -59,7 +60,15 @@ interface AppState {
     isComplete: boolean;
     simulatedPlayerGames: number;
     totalPlayerGames: number;
-    standings: { name: string; score: number; rating: number; ratingDelta: number; isHuman?: boolean }[];
+    standings: {
+      name: string;
+      score: number;
+      rating: number;
+      ratingDelta: number;
+      performanceRating?: number;
+      averageOpponentRating?: number;
+      isHuman?: boolean;
+    }[];
     games: SimRoundGame[];
   } | null;
   tournamentSim: TournamentSimState | null;
@@ -73,7 +82,12 @@ interface AppState {
     updateAvatarDraft: (patch: Partial<AvatarProfile>) => void;
     cancelAvatarSetup: () => void;
     continueCareer: () => void;
-    trainMonth: (modules: TrainingModule[], coachingPurchases: number, puzzleCreditsEarned: number) => void;
+    trainMonth: (
+      modules: TrainingModule[],
+      coachingPurchases: number,
+      puzzleCreditsEarned: number,
+      mode?: 'rest' | 'work'
+    ) => void;
     chooseTournament: (template: TournamentTemplate) => void;
     clearTournamentSelection: () => void;
     watchNextTournamentGame: (template: TournamentTemplate) => void;
@@ -111,8 +125,11 @@ function safeParse(raw: string | null): GameState | null {
 function normalizeGameState(state: GameState): GameState {
   const next = structuredClone(state);
   next.coachingPurchases ??= 0;
+  next.workMonths ??= 0;
+  next.ratedGamesPlayed ??= 0;
   next.avatar = { ...DEFAULT_AVATAR, ...(next.avatar ?? {}) };
-  delete (next.avatar as { gender?: unknown }).gender;
+  next.avatar.gender ??= DEFAULT_AVATAR.gender;
+  next.normProgress = normalizeNormProgress(next.normProgress);
   next.skills.openingElo ??= next.publicRating;
   next.skills.middlegameElo ??= next.publicRating;
   next.skills.endgameElo ??= next.publicRating;
@@ -239,10 +256,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         });
       }
     },
-    trainMonth: (modules, coachingPurchases, puzzleCreditsEarned) => {
+    trainMonth: (modules, coachingPurchases, puzzleCreditsEarned, mode = 'rest') => {
       const state = get();
       if (!state.game) return;
-      const nextGame = applyTrainingMonth(state.game, modules, coachingPurchases, puzzleCreditsEarned);
+      const nextGame = applyTrainingMonth(state.game, modules, coachingPurchases, puzzleCreditsEarned, mode);
       set({ game: nextGame, previousSkills: state.game.skills, currentView: 'dashboard' });
       localStorage.setItem(SAVE_KEY, JSON.stringify(nextGame));
     },
@@ -308,7 +325,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           playerDone: 0,
           playerTotal: template.rounds,
           gamesDone: 0,
-          gamesTotal: template.rounds * 16,
+          gamesTotal: template.rounds * Math.max(1, Math.floor((template.fieldSize ?? 32) / 2)),
           round: 0,
           board: 0,
           message: 'Preparing tournament simulation...',
@@ -368,6 +385,8 @@ export const useAppStore = create<AppState>((set, get) => ({
               score: s.score,
               rating: s.rating,
               ratingDelta: s.rating - s.initialRating,
+              performanceRating: s.performanceRating,
+              averageOpponentRating: s.averageOpponentRating,
               isHuman: s.isHuman
             })),
             games: result.roundGames
@@ -445,6 +464,8 @@ export const useAppStore = create<AppState>((set, get) => ({
             score: s.score,
             rating: s.rating,
             ratingDelta: s.rating - s.initialRating,
+            performanceRating: s.performanceRating,
+            averageOpponentRating: s.averageOpponentRating,
             isHuman: s.isHuman
           })),
           games: fallbackRun.roundGames

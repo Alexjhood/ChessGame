@@ -3,7 +3,9 @@
  * Key Mechanics: Defines player stats, tournaments, game logs, and shared interfaces used across sim, store, and UI.
  */
 
-export type Title = 'None' | 'CM' | 'FM' | 'IM' | 'GM' | 'WC';
+import type { NormProgress } from './titles';
+
+export type Title = 'None' | 'CM' | 'FM' | 'IM' | 'GM' | 'WCM' | 'WFM' | 'WIM' | 'WGM' | 'WC';
 
 export type StyleTag = 'Solid' | 'Tactical' | 'Aggressive' | 'Endgame';
 
@@ -51,6 +53,9 @@ export interface TournamentHistory {
   score: number;
   ratingDelta: number;
   prize: number;
+  performanceRating?: number;
+  averageOpponentRating?: number;
+  normsAwarded?: string[];
   games: GameRecord[];
 }
 
@@ -86,8 +91,11 @@ export interface GameState {
   reputation: number;
   fatigue: number;
   confidence: number;
+  ratedGamesPlayed: number;
   coachingPurchases: number;
+  workMonths: number;
   avatar: AvatarProfile;
+  normProgress: NormProgress;
   skills: SkillRatings;
   recentSkillDeltas: Partial<Record<keyof SkillRatings, number>>;
   trainingCounts: Record<keyof SkillRatings, number>;
@@ -114,6 +122,17 @@ export interface TournamentTemplate {
   id: string;
   name: string;
   tier?: string;
+  format?:
+    | 'swiss'
+    | 'round_robin'
+    | 'swiss_top16_rr'
+    | 'swiss_top8_rr'
+    | 'swiss_top4_rr'
+    | 'swiss_top8_ko'
+    | 'swiss_top4_ko'
+    | 'swiss_top2_ko';
+  fieldSize?: number;
+  phase1Rounds?: number;
   rounds: number;
   avgOpponentRating: number;
   ratingStdDev: number;
@@ -143,6 +162,8 @@ export interface SwissPlayer {
   score: number;
   oppIds: string[];
   buchholz: number;
+  performanceRating?: number;
+  averageOpponentRating?: number;
   isHuman?: boolean;
 }
 

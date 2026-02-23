@@ -23,18 +23,19 @@ import {
 import { trainingModules, tournamentTemplates } from '../state/store';
 import { ChessBoard } from '../ui/board/ChessBoard';
 import { LiveWatch } from '../ui/tournament/LiveWatch';
-import { TITLE_LEVELS } from '../sim/titles';
+import { ELO_SCALE_LEVELS, eloScaleRequirementText } from '../sim/titles';
 import {
   coachingCostForBatch,
   coachingCostForPurchaseIndex,
   puzzleAttemptsForState,
   puzzleLambdaForElo,
   samplePoisson,
+  workIncomeForMonth,
   trainingCreditsForState,
   trainingMeanGain
 } from '../sim/weekly';
-import type { GameState, SkillRatings } from '../sim/models';
-import { paidPlacesRangeForField, payoutForPlace, payoutsForField, prizePoolRangeForEntryFee } from '../sim/payout';
+import type { GameState, SkillRatings, TournamentTemplate } from '../sim/models';
+import { generatePaidPlaces, generatePrizePool, payoutForPlace } from '../sim/payout';
 import { monthlyTournamentPool } from '../sim/tournamentPool';
 import {
   fetchPuzzleNearElo,
@@ -104,7 +105,7 @@ function AvatarPreview({ avatar }: { avatar: AvatarProfile }) {
 
 function EloMeter({ label, value, delta, description }: { label: string; value: number; delta?: number; description: string }) {
   const [tipOpen, setTipOpen] = useState(false);
-  const pct = Math.max(0, Math.min(100, ((value - 700) / 1600) * 100));
+  const pct = Math.max(0, Math.min(100, (value / 2800) * 100));
   return (
     <div
       className="elo-meter"
@@ -124,13 +125,13 @@ function EloMeter({ label, value, delta, description }: { label: string; value: 
           >
             i
           </button>
+          {tipOpen ? <div className="elo-info-popover">{description}</div> : null}
         </span>
         <strong>
           {value}
           {delta && delta > 0 ? <span className="elo-delta"> +{delta}</span> : null}
         </strong>
       </div>
-      {tipOpen ? <div className="elo-info-tip">{description}</div> : null}
       <div className="elo-track">
         <div className="elo-fill" style={{ width: `${pct}%` }} />
       </div>
@@ -138,39 +139,111 @@ function EloMeter({ label, value, delta, description }: { label: string; value: 
   );
 }
 
-function TitleJourney({ rating }: { rating: number }) {
-  const currentIndex = TITLE_LEVELS.map((t) => t.key).lastIndexOf(
-    TITLE_LEVELS.filter((t) => rating >= t.minRating).slice(-1)[0]?.key ?? 'None'
-  );
-  const next = TITLE_LEVELS[currentIndex + 1] ?? null;
-  const base = TITLE_LEVELS[currentIndex]?.minRating ?? 0;
-  const toward = next ? Math.max(0, Math.min(100, ((rating - base) / (next.minRating - base)) * 100)) : 100;
+function TitleJourney({ game }: { game: GameState }) {
+  const sortedScales = [...ELO_SCALE_LEVELS].sort((a, b) => a.minRating - b.minRating);
+  const scaleCurrentIndex = sortedScales.findIndex((s) => {
+    const upperOk = s.maxRating === null ? true : game.publicRating <= s.maxRating;
+    return game.publicRating >= s.minRating && upperOk;
+  });
+  const resolvedScaleIndex = scaleCurrentIndex >= 0 ? scaleCurrentIndex : sortedScales.length - 1;
+  const shortLabels: Record<string, string> = {
+    novice: 'Novice',
+    class_e: 'Class E',
+    class_d: 'Class D',
+    class_c: 'Class C',
+    class_b: 'Class B',
+    class_a: 'Class A',
+    expert: 'Expert',
+    cm: 'CM',
+    fm: 'FM',
+    im: 'IM',
+    gm: 'GM',
+    super_gm: 'Super GM'
+  };
 
   return (
     <div className="title-journey">
-      <div className="title-current" style={{ borderColor: TITLE_LEVELS[currentIndex]?.color }}>
-        <span className="title-label">Current Title</span>
-        <strong>{TITLE_LEVELS[currentIndex]?.key ?? 'None'}</strong>
-      </div>
-      <div className="title-progress">
-        <div className="title-progress-fill" style={{ width: `${toward}%` }} />
-      </div>
-      <p className="title-next">
-        {next ? `Next: ${next.key} at Elo ${next.minRating}` : 'Top Rank Reached: World Champion'}
-      </p>
-      <div className="title-ladder">
-        {TITLE_LEVELS.map((level, idx) => {
-          const state = idx < currentIndex ? 'earned' : idx === currentIndex ? 'current' : 'locked';
+      <div className="title-scale-header">Elo Scale Journey</div>
+      <div className="title-scale-grid">
+        {sortedScales.map((scale, idx) => {
+          const state = idx < resolvedScaleIndex ? 'earned' : idx === resolvedScaleIndex ? 'current' : 'locked';
+          const rangeLabel = scale.maxRating === null ? `${scale.minRating}+` : `${scale.minRating}-${scale.maxRating}`;
           return (
-            <div key={level.key} className={`title-chip ${state}`} style={{ borderColor: level.color }}>
-              <span>{level.key}</span>
-              <small>{level.minRating}</small>
+            <div key={scale.id} className={`title-chip ${state}`} style={{ borderColor: scale.color }}>
+              <span>{shortLabels[scale.id] ?? scale.label}</span>
+              <small>{rangeLabel}</small>
+              <span className="title-chip-tip">{eloScaleRequirementText(scale, game.normProgress)}</span>
             </div>
           );
         })}
       </div>
     </div>
   );
+}
+
+function tournamentFormatLabel(format: TournamentTemplate['format']): string {
+  switch (format) {
+    case 'round_robin':
+      return 'Round Robin';
+    case 'swiss_top16_rr':
+      return 'Swiss + Top 16 RR';
+    case 'swiss_top8_rr':
+      return 'Swiss + Top 8 RR';
+    case 'swiss_top4_rr':
+      return 'Swiss + Top 4 RR';
+    case 'swiss_top8_ko':
+      return 'Swiss + Top 8 Knockout';
+    case 'swiss_top4_ko':
+      return 'Swiss + Top 4 Knockout';
+    case 'swiss_top2_ko':
+      return 'Swiss + Top 2 Final';
+    default:
+      return 'Swiss';
+  }
+}
+
+function tournamentFormatDiagram(format: TournamentTemplate['format'], phase1Rounds?: number): string {
+  const p1 = phase1Rounds ?? 5;
+  switch (format) {
+    case 'round_robin':
+      return '◉ All-play-all\nA↔B↔C↔D...\nMost points wins';
+    case 'swiss_top16_rr':
+      return `◎ Swiss (${p1} rounds)\n⇩ top 16\n◉ Round Robin finals`;
+    case 'swiss_top8_rr':
+      return `◎ Swiss (${p1} rounds)\n⇩ top 8\n◉ Round Robin finals`;
+    case 'swiss_top4_rr':
+      return `◎ Swiss (${p1} rounds)\n⇩ top 4\n◉ Round Robin finals`;
+    case 'swiss_top8_ko':
+      return `◎ Swiss (${p1} rounds)\n⇩ top 8\n◉ QF → SF → Final`;
+    case 'swiss_top4_ko':
+      return `◎ Swiss (${p1} rounds)\n⇩ top 4\n◉ SF → Final`;
+    case 'swiss_top2_ko':
+      return `◎ Swiss (${p1} rounds)\n⇩ top 2\n◉ Championship Final`;
+    default:
+      return '◎ Swiss pairings each round\n(score groups)\nFinal ranking by score';
+  }
+}
+
+function tournamentFormatDescription(format: TournamentTemplate['format'], phase1Rounds?: number): string {
+  const p1 = phase1Rounds ?? 5;
+  switch (format) {
+    case 'round_robin':
+      return 'Every player faces every other player. Best total score wins.';
+    case 'swiss_top16_rr':
+      return `Open Swiss for ${p1} rounds, then top 16 enter a round-robin final group.`;
+    case 'swiss_top8_rr':
+      return `Open Swiss for ${p1} rounds, then top 8 enter a round-robin final group.`;
+    case 'swiss_top4_rr':
+      return `Open Swiss for ${p1} rounds, then top 4 enter a round-robin final group.`;
+    case 'swiss_top8_ko':
+      return `Open Swiss for ${p1} rounds, then top 8 play knockout rounds (quarterfinals, semifinals, final).`;
+    case 'swiss_top4_ko':
+      return `Open Swiss for ${p1} rounds, then top 4 play knockout rounds (semifinals and final).`;
+    case 'swiss_top2_ko':
+      return `Open Swiss for ${p1} rounds, then the top 2 play a knockout final.`;
+    default:
+      return 'Players are paired by current score each round; no elimination.';
+  }
 }
 
 const SKILL_LABELS: Record<keyof SkillRatings, string> = {
@@ -349,56 +422,57 @@ function DashboardScreen() {
             <p className="cute-note">Tip: click anywhere outside this pop-up to close it.</p>
       </FloatingOverlayModal>
       <div className="panel prodigy-card">
-        <h2>{game.avatar.name} 🌟</h2>
+        <h2>
+          {game.avatar.name} · Age {game.ageYears.toFixed(2)} 🌟
+        </h2>
         <AvatarPreview avatar={game.avatar} />
         <div className="badge-row">
           <span className="badge">🏆 {game.title}</span>
           <span className="badge">📈 Overall Elo {game.publicRating}</span>
         </div>
-        <TitleJourney rating={game.publicRating} />
-        <StatRow label="Age" value={game.ageYears.toFixed(2)} />
-        <StatRow label="Rating" value={game.publicRating} />
-        <StatRow label="Title" value={game.title} />
+        <TitleJourney game={game} />
       </div>
 
       <div className="panel skill-panel">
         <h2>Skill Elos</h2>
-        <EloMeter
-          label="Opening"
-          value={game.skills.openingElo}
-          delta={game.recentSkillDeltas.openingElo ?? 0}
-          description={SKILL_DESCRIPTIONS.openingElo}
-        />
-        <EloMeter
-          label="Middlegame"
-          value={game.skills.middlegameElo}
-          delta={game.recentSkillDeltas.middlegameElo ?? 0}
-          description={SKILL_DESCRIPTIONS.middlegameElo}
-        />
-        <EloMeter
-          label="Endgame"
-          value={game.skills.endgameElo}
-          delta={game.recentSkillDeltas.endgameElo ?? 0}
-          description={SKILL_DESCRIPTIONS.endgameElo}
-        />
-        <EloMeter
-          label="Resilience"
-          value={game.skills.resilience}
-          delta={game.recentSkillDeltas.resilience ?? 0}
-          description={SKILL_DESCRIPTIONS.resilience}
-        />
-        <EloMeter
-          label="Competitiveness"
-          value={game.skills.competitiveness}
-          delta={game.recentSkillDeltas.competitiveness ?? 0}
-          description={SKILL_DESCRIPTIONS.competitiveness}
-        />
-        <EloMeter
-          label="Study Skills"
-          value={game.skills.studySkills}
-          delta={game.recentSkillDeltas.studySkills ?? 0}
-          description={SKILL_DESCRIPTIONS.studySkills}
-        />
+        <div className="skill-meter-list">
+          <EloMeter
+            label="Opening"
+            value={game.skills.openingElo}
+            delta={game.recentSkillDeltas.openingElo ?? 0}
+            description={SKILL_DESCRIPTIONS.openingElo}
+          />
+          <EloMeter
+            label="Middlegame"
+            value={game.skills.middlegameElo}
+            delta={game.recentSkillDeltas.middlegameElo ?? 0}
+            description={SKILL_DESCRIPTIONS.middlegameElo}
+          />
+          <EloMeter
+            label="Endgame"
+            value={game.skills.endgameElo}
+            delta={game.recentSkillDeltas.endgameElo ?? 0}
+            description={SKILL_DESCRIPTIONS.endgameElo}
+          />
+          <EloMeter
+            label="Resilience"
+            value={game.skills.resilience}
+            delta={game.recentSkillDeltas.resilience ?? 0}
+            description={SKILL_DESCRIPTIONS.resilience}
+          />
+          <EloMeter
+            label="Competitiveness"
+            value={game.skills.competitiveness}
+            delta={game.recentSkillDeltas.competitiveness ?? 0}
+            description={SKILL_DESCRIPTIONS.competitiveness}
+          />
+          <EloMeter
+            label="Study Skills"
+            value={game.skills.studySkills}
+            delta={game.recentSkillDeltas.studySkills ?? 0}
+            description={SKILL_DESCRIPTIONS.studySkills}
+          />
+        </div>
       </div>
 
       <div className="panel week-actions">
@@ -631,6 +705,22 @@ function DashboardScreen() {
                 type="number"
                 value={simSettings.training.coachingCostStep}
                 onChange={(e) => actions.updateSimSetting('training', 'coachingCostStep', Number(e.target.value))}
+              />
+            </label>
+            <label>
+              Work month base income
+              <input
+                type="number"
+                value={simSettings.training.workBaseIncome}
+                onChange={(e) => actions.updateSimSetting('training', 'workBaseIncome', Number(e.target.value))}
+              />
+            </label>
+            <label>
+              Work month income step
+              <input
+                type="number"
+                value={simSettings.training.workIncomeStep}
+                onChange={(e) => actions.updateSimSetting('training', 'workIncomeStep', Number(e.target.value))}
               />
             </label>
             <label>
@@ -896,6 +986,8 @@ function TrainingScreen() {
   );
   const used = selectedModules.length;
   const totalCost = coachingCost;
+  const workIncomePreview = workIncomeForMonth(game.workMonths ?? 0);
+  const canWorkMonth = used === 0 && plannedCoaching === 0;
   const moduleCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     plannedModuleIds.forEach((id) => {
@@ -1206,6 +1298,9 @@ function TrainingScreen() {
     }
     setPlannedCoaching((v) => v + 1);
   };
+
+  const unspentCredits = credits - used;
+  const canRestThisMonth = credits === 0 || unspentCredits >= 1;
 
   return (
     <div className="screen">
@@ -1518,15 +1613,39 @@ function TrainingScreen() {
           Study Habits now controls puzzle attempts (+1 every {simSettings.training.puzzleAttemptStudyStep} points).
         </p>
         <div className="button-row">
-          <button
-            className={highlightStartTrainingMonth || highlightRestAction ? 'guided-target' : ''}
-            onClick={() => {
-              actions.trainMonth(selectedModules, plannedCoaching, puzzleCreditsEarned);
-              clearPlan();
-            }}
-          >
-            {used === 0 ? 'Advance Month (Rest & Recover)' : 'Start Training Month'}
-          </button>
+          {used > 0 ? (
+            <button
+              className={highlightStartTrainingMonth ? 'guided-target' : ''}
+              onClick={() => {
+                actions.trainMonth(selectedModules, plannedCoaching, puzzleCreditsEarned, 'rest');
+                clearPlan();
+              }}
+            >
+              Start Training Month
+            </button>
+          ) : null}
+          {canRestThisMonth ? (
+            <button
+              className={highlightRestAction ? 'guided-target' : ''}
+              onClick={() => {
+                actions.trainMonth(selectedModules, plannedCoaching, puzzleCreditsEarned, 'rest');
+                clearPlan();
+              }}
+            >
+              Advance Month (Rest & Recover)
+            </button>
+          ) : null}
+          {used === 0 ? (
+            <button
+              disabled={!canWorkMonth}
+              onClick={() => {
+                actions.trainMonth(selectedModules, plannedCoaching, puzzleCreditsEarned, 'work');
+                clearPlan();
+              }}
+            >
+              Spend Month Working (+${workIncomePreview})
+            </button>
+          ) : null}
           <button disabled={used === 0 && plannedCoaching === 0} onClick={clearPlan}>
             Clear Plan
           </button>
@@ -1935,6 +2054,10 @@ function TournamentScreen() {
         <div className="panel">
           <h2>{selectedTournament.name}</h2>
           <p>Tier: {selectedTournament.tier ?? 'Open'}</p>
+          <p>Format: {tournamentFormatLabel(selectedTournament.format)}</p>
+          <p>{tournamentFormatDescription(selectedTournament.format, selectedTournament.phase1Rounds)}</p>
+          <pre className="cute-note">{tournamentFormatDiagram(selectedTournament.format, selectedTournament.phase1Rounds)}</pre>
+          <p>Field Size: {Math.max(2, selectedTournament.fieldSize ?? 32)}</p>
           <p>Rounds: {selectedTournament.rounds}</p>
           <p>Entry Fee: ${selectedTournament.entryFee}</p>
           <p>Avg Opponent Elo: {selectedTournament.avgOpponentRating}</p>
@@ -2026,30 +2149,37 @@ function TournamentScreen() {
                 if (game.reputation < tpl.reputationReq) reasons.push(`Need reputation ${tpl.reputationReq}`);
                 if (game.publicRating < (tpl.minEloReq ?? 0)) reasons.push(`Need Elo ${tpl.minEloReq}`);
                 const locked = reasons.length > 0;
-                const participantCount = 32;
-                const poolRange = prizePoolRangeForEntryFee(tpl.entryFee, participantCount);
-                const paidPlacesRange = paidPlacesRangeForField(participantCount);
-                const examplePool = tpl.entryFee * participantCount;
-                const previewPayouts = payoutsForField(examplePool, participantCount, paidPlacesRange.max);
+                const participantCount = Math.max(2, tpl.fieldSize ?? 32);
+                const pickerSeed = game.meta.seed + game.week * 9973;
+                const actualPool = generatePrizePool(tpl.entryFee, participantCount, pickerSeed, tpl.id);
+                const actualPaidPlaces = generatePaidPlaces(participantCount, pickerSeed, tpl.id);
+                const formatLabel = tournamentFormatLabel(tpl.format);
+                const formatDescription = tournamentFormatDescription(tpl.format, tpl.phase1Rounds);
+                const formatDiagram = tournamentFormatDiagram(tpl.format, tpl.phase1Rounds);
 
                 return (
                   <article key={tpl.id} className={`panel card tournament-card ${locked ? 'locked' : 'open'}`}>
                     <h3>{tpl.name}</h3>
                     <p>Tier: {tpl.tier ?? 'Open'}</p>
+                    <p>
+                      Format:{' '}
+                      <span className="format-pill">
+                        {formatLabel}
+                        <span className="format-tooltip">
+                          <strong>{formatLabel}</strong>
+                          <span>{formatDescription}</span>
+                          <pre>{formatDiagram}</pre>
+                        </span>
+                      </span>
+                    </p>
+                    <p>Field Size: {participantCount}</p>
                     <p>Rounds: {tpl.rounds}</p>
                     <p>Avg Opponent: {tpl.avgOpponentRating}</p>
                     <p>Min Elo: {tpl.minEloReq ?? 0}</p>
                     <p>Rep Req: {tpl.reputationReq}</p>
                     <p>Entry: ${tpl.entryFee}</p>
-                    <p>Prize Pool: ${poolRange.min} - ${poolRange.max} (fees x 0.75-1.25)</p>
-                    <div className="prize-box">
-                      <strong>Payout Preview (example at 1.0x)</strong>
-                      <span>Paid Places: Top {paidPlacesRange.min}-{paidPlacesRange.max} / {participantCount}</span>
-                      <span>1st: ${previewPayouts[0] ?? 0}</span>
-                      <span>2nd: ${previewPayouts[1] ?? 0}</span>
-                      <span>3rd: ${previewPayouts[2] ?? 0}</span>
-                      <span>Last Paid (at max depth {paidPlacesRange.max}th): ${previewPayouts[paidPlacesRange.max - 1] ?? 0}</span>
-                    </div>
+                    <p>Prize Pool: ${actualPool}</p>
+                    <p>Paid Places: Top {actualPaidPlaces} / {participantCount}</p>
                     <p>Travel Fatigue: +{tpl.travelFatigue}</p>
                     <button disabled={locked} onClick={() => actions.chooseTournament(tpl)}>
                       {locked ? 'Locked' : 'Enter Tournament'}

@@ -13,9 +13,10 @@ import { generateOpponents } from './opponents';
 import { updateElo } from './rating';
 import { clamp, createRng } from './rng';
 import { getSimSettings } from './settings';
-import { titleFromRating } from './titles';
+import { qualifyingNormsForTournament, titleFromProgress, titleFromRating } from './titles';
 import { generatePaidPlaces, generatePrizePool, payoutForPlace } from './payout';
 import { canTriggerStockfishBalanceDraw, stockfishDrawChanceAtFullMove } from './stockfishDraw';
+import { tournamentPerformanceRating } from './performance';
 
 const MAX_INBOX_MONTHS = 3;
 const SKILL_KEYS = [
@@ -141,6 +142,93 @@ function pairSwiss(players: SwissPlayer[]): Array<[SwissPlayer, SwissPlayer]> {
   return pairs;
 }
 
+function topCutSizeForFormat(format: NonNullable<TournamentTemplate['format']>): number {
+  if (format === 'swiss_top16_rr') return 16;
+  if (format === 'swiss_top8_rr') return 8;
+  if (format === 'swiss_top4_rr') return 4;
+  if (format === 'swiss_top8_ko') return 8;
+  if (format === 'swiss_top4_ko') return 4;
+  if (format === 'swiss_top2_ko') return 2;
+  return 0;
+}
+
+function isKnockoutFormat(format: NonNullable<TournamentTemplate['format']>): boolean {
+  return format === 'swiss_top8_ko' || format === 'swiss_top4_ko' || format === 'swiss_top2_ko';
+}
+
+function buildRoundRobinSchedule(playerIds: string[]): Array<Array<[string, string]>> {
+  const list = [...playerIds];
+  if (list.length % 2 === 1) list.push('__bye__');
+  const n = list.length;
+  const rounds = n - 1;
+  const schedule: Array<Array<[string, string]>> = [];
+  let arr = [...list];
+  for (let r = 0; r < rounds; r += 1) {
+    const pairings: Array<[string, string]> = [];
+    for (let i = 0; i < n / 2; i += 1) {
+      const a = arr[i]!;
+      const b = arr[n - 1 - i]!;
+      if (a === '__bye__' || b === '__bye__') continue;
+      const flip = r % 2 === 1;
+      pairings.push(flip ? [b, a] : [a, b]);
+    }
+    schedule.push(pairings);
+    arr = [arr[0]!, arr[n - 1]!, ...arr.slice(1, n - 1)];
+  }
+  return schedule;
+}
+
+function formatConfig(template: TournamentTemplate): {
+  mode: NonNullable<TournamentTemplate['format']>;
+  phase1Rounds: number;
+  cutSize: number;
+} {
+  const mode = template.format ?? 'swiss';
+  const cutSize = topCutSizeForFormat(mode);
+  const phase1Rounds =
+    cutSize > 0
+      ? Math.max(1, Math.min(template.rounds, template.phase1Rounds ?? Math.max(3, template.rounds - (cutSize - 1))))
+      : template.rounds;
+  return { mode, phase1Rounds, cutSize };
+}
+
+function knockoutRoundPairings(activeIds: string[]): Array<[string, string]> {
+  const pairings: Array<[string, string]> = [];
+  for (let i = 0; i < Math.floor(activeIds.length / 2); i += 1) {
+    const white = activeIds[i]!;
+    const black = activeIds[activeIds.length - 1 - i]!;
+    pairings.push([white, black]);
+  }
+  return pairings;
+}
+
+function resolveKnockoutWinner(result: '1-0' | '0-1' | '1/2-1/2', white: SwissPlayer, black: SwissPlayer, seed: number): SwissPlayer {
+  if (result === '1-0') return white;
+  if (result === '0-1') return black;
+  const rng = createRng(seed);
+  if (white.rating === black.rating) return rng.next() < 0.5 ? white : black;
+  return white.rating > black.rating ? white : black;
+}
+
+function estimatedBoardsTotal(template: TournamentTemplate, participantCount: number): number {
+  const { mode, phase1Rounds, cutSize } = formatConfig(template);
+  const boardsPerRound = Math.floor(participantCount / 2);
+  if (mode === 'swiss') return template.rounds * boardsPerRound;
+  if (mode === 'round_robin') return Math.min(template.rounds, Math.max(1, participantCount - 1)) * boardsPerRound;
+  if (isKnockoutFormat(mode)) {
+    let active = Math.min(cutSize, participantCount);
+    let phase2Boards = 0;
+    for (let r = 0; r < Math.max(0, template.rounds - phase1Rounds) && active > 1; r += 1) {
+      phase2Boards += Math.floor(active / 2);
+      active = Math.floor(active / 2);
+    }
+    return phase1Rounds * boardsPerRound + phase2Boards;
+  }
+  const phase2Rounds = Math.max(0, template.rounds - phase1Rounds);
+  const cutBoards = Math.floor(Math.min(cutSize, participantCount) / 2);
+  return phase1Rounds * boardsPerRound + phase2Rounds * cutBoards;
+}
+
 function toOppFromPlayer(p: SwissPlayer, map: Record<string, Opponent>): Opponent {
   return map[p.id]!;
 }
@@ -148,6 +236,16 @@ function toOppFromPlayer(p: SwissPlayer, map: Record<string, Opponent>): Opponen
 function averageSkillElo(opponent: Opponent): number {
   const s = opponent.skills;
   return Math.round((s.openingElo + s.middlegameElo + s.endgameElo + s.resilience + s.competitiveness) / 5);
+}
+
+function applyPerformanceRatings(standings: SwissPlayer[]): void {
+  const byId = Object.fromEntries(standings.map((s) => [s.id, s]));
+  standings.forEach((player) => {
+    const oppRatings = player.oppIds.map((oppId) => byId[oppId]?.initialRating).filter((r): r is number => typeof r === 'number');
+    const avgOpp = oppRatings.length > 0 ? oppRatings.reduce((acc, r) => acc + r, 0) / oppRatings.length : player.initialRating;
+    player.averageOpponentRating = Math.round(avgOpp);
+    player.performanceRating = tournamentPerformanceRating(player.score, Math.max(1, player.oppIds.length), avgOpp);
+  });
 }
 
 function isWorldChampionship(template: TournamentTemplate): boolean {
@@ -290,6 +388,34 @@ function adjudicateUnfinishedGame(
   return '0-1';
 }
 
+function applyNormsAndTitleFromStandings(
+  updated: GameState,
+  standings: SwissPlayer[],
+  roundsPlayed: number
+): { awardedNorms: string[]; playerPerformance: number; playerAverageOpp: number } {
+  const player = standings.find((p) => p.id === 'player');
+  const performance = player?.performanceRating ?? updated.publicRating;
+  const avgOpp = player?.averageOpponentRating ?? updated.publicRating;
+  const playerScore = player?.score ?? 0;
+  const awarded = qualifyingNormsForTournament({
+    games: roundsPlayed,
+    score: playerScore,
+    averageOpponentRating: avgOpp,
+    performanceRating: performance
+  });
+  awarded.forEach((normTitle) => {
+    updated.normProgress[normTitle] = (updated.normProgress[normTitle] ?? 0) + 1;
+  });
+  updated.title = titleFromProgress({
+    rating: updated.publicRating,
+    gender: updated.avatar.gender,
+    norms: updated.normProgress,
+    ratedGamesPlayed: updated.ratedGamesPlayed,
+    worldChampionAchieved: updated.meta.worldChampionAchieved
+  });
+  return { awardedNorms: awarded, playerPerformance: performance, playerAverageOpp: avgOpp };
+}
+
 export function runSwissTournament(
   state: GameState,
   template: TournamentTemplate,
@@ -300,7 +426,8 @@ export function runSwissTournament(
   }
   const seed = state.meta.seed + state.week * 9973;
   const rng = createRng(seed);
-  const opponents = generateOpponents(seed, 31, template.avgOpponentRating, template.ratingStdDev);
+  const participantCountTarget = Math.max(2, template.fieldSize ?? 32);
+  const opponents = generateOpponents(seed, Math.max(1, participantCountTarget - 1), template.avgOpponentRating, template.ratingStdDev);
 
   const playerOpponent: Opponent = {
     id: 'player',
@@ -331,13 +458,59 @@ export function runSwissTournament(
   const maxPlayerGames = Math.max(0, Math.min(totalPlayerGames, options.maxPlayerGames ?? totalPlayerGames));
   let simulatedPlayerGames = 0;
   let playerGameIndex = 0;
+  const { mode, phase1Rounds, cutSize } = formatConfig(template);
+  const allRoundRobinSchedule =
+    mode === 'round_robin' ? buildRoundRobinSchedule(standings.map((s) => s.id)).slice(0, template.rounds) : null;
+  let topCutRoundRobinSchedule: Array<Array<[string, string]>> | null = null;
+  let knockoutActiveIds: string[] | null = null;
+  let completedAllRounds = true;
 
   for (let round = 1; round <= template.rounds; round += 1) {
-    if (simulatedPlayerGames >= maxPlayerGames) break;
-    const pairs = pairSwiss(standings);
+    if (simulatedPlayerGames >= maxPlayerGames) {
+      completedAllRounds = false;
+      break;
+    }
+    let pairs: Array<[SwissPlayer, SwissPlayer]> = [];
+    let forcePairOrder = false;
+    if (mode === 'swiss') {
+      pairs = pairSwiss(standings);
+    } else if (mode === 'round_robin') {
+      const idPairs = allRoundRobinSchedule?.[round - 1] ?? [];
+      const byId = Object.fromEntries(standings.map((s) => [s.id, s]));
+      pairs = idPairs
+        .map(([w, b]) => [byId[w], byId[b]] as const)
+        .filter((p): p is [SwissPlayer, SwissPlayer] => Boolean(p[0] && p[1]));
+      forcePairOrder = true;
+    } else if (round <= phase1Rounds) {
+      pairs = pairSwiss(standings);
+    } else {
+      const ranked = [...standings].sort((a, b) => b.score - a.score || b.buchholz - a.buchholz || b.rating - a.rating);
+      const byId = Object.fromEntries(standings.map((s) => [s.id, s]));
+      if (isKnockoutFormat(mode)) {
+        if (!knockoutActiveIds) {
+          knockoutActiveIds = ranked.slice(0, Math.min(cutSize, ranked.length)).map((p) => p.id);
+        }
+        const idPairs = knockoutRoundPairings(knockoutActiveIds);
+        pairs = idPairs
+          .map(([w, b]) => [byId[w], byId[b]] as const)
+          .filter((p): p is [SwissPlayer, SwissPlayer] => Boolean(p[0] && p[1]));
+        forcePairOrder = true;
+      } else {
+        if (!topCutRoundRobinSchedule) {
+          const topIds = ranked.slice(0, Math.min(cutSize, ranked.length)).map((p) => p.id);
+          topCutRoundRobinSchedule = buildRoundRobinSchedule(topIds).slice(0, Math.max(0, template.rounds - phase1Rounds));
+        }
+        const idPairs = topCutRoundRobinSchedule[round - phase1Rounds - 1] ?? [];
+        pairs = idPairs
+          .map(([w, b]) => [byId[w], byId[b]] as const)
+          .filter((p): p is [SwissPlayer, SwissPlayer] => Boolean(p[0] && p[1]));
+        forcePairOrder = true;
+      }
+    }
+    const knockoutWinners: string[] = [];
     pairs.forEach(([a, b], pairIdx) => {
-      const white = pairIdx % 2 === 0 ? a : b;
-      const black = pairIdx % 2 === 0 ? b : a;
+      const white = forcePairOrder ? a : pairIdx % 2 === 0 ? a : b;
+      const black = forcePairOrder ? b : pairIdx % 2 === 0 ? b : a;
       const whiteOpp = toOppFromPlayer(white, oppMap);
       const blackOpp = toOppFromPlayer(black, oppMap);
       const hasPlayer = white.id === 'player' || black.id === 'player';
@@ -392,19 +565,27 @@ export function runSwissTournament(
       }
 
       roundGames.push({ round, white: whiteOpp, black: blackOpp, result, movesUci, pgn, playerEloChange });
+      if (isKnockoutFormat(mode) && round > phase1Rounds) {
+        knockoutWinners.push(resolveKnockoutWinner(result, white, black, seed + round * 100 + pairIdx).id);
+      }
     });
+    if (isKnockoutFormat(mode) && round > phase1Rounds && knockoutWinners.length > 0) {
+      knockoutActiveIds = knockoutWinners;
+    }
 
     standings.forEach((p) => {
       p.buchholz = p.oppIds.reduce((acc, oppId) => acc + (standings.find((x) => x.id === oppId)?.score ?? 0), 0);
     });
   }
 
+  applyPerformanceRatings(standings);
   standings.sort((a, b) => b.score - a.score || b.buchholz - a.buchholz || b.rating - a.rating);
-  const isComplete = simulatedPlayerGames >= totalPlayerGames;
+  const isComplete = completedAllRounds;
 
+  const player = standings.find((p) => p.id === 'player');
   const placement = standings.findIndex((p) => p.id === 'player') + 1;
-  const playerScore = standings.find((p) => p.id === 'player')?.score ?? 0;
-  const playerRating = standings.find((p) => p.id === 'player')?.rating ?? state.publicRating;
+  const playerScore = player?.score ?? 0;
+  const playerRating = player?.rating ?? state.publicRating;
   const ratingDelta = playerRating - state.publicRating;
   const prize = payoutForPlace(placement, prizePool, participantCount, paidPlaces);
 
@@ -419,6 +600,9 @@ export function runSwissTournament(
     tournamentId: template.id
   }));
 
+  const resolvedTotalPlayerGames = isComplete
+    ? roundGames.filter((g) => g.white.id === 'player' || g.black.id === 'player').length
+    : totalPlayerGames;
   const updated = structuredClone(state);
   if (isComplete) {
     const beforeSkills = structuredClone(state.skills);
@@ -443,7 +627,8 @@ export function runSwissTournament(
       studySkills: updated.skills.studySkills - beforeSkills.studySkills
     };
     updated.publicRating = playerRating;
-    updated.title = titleFromRating(updated.publicRating);
+    updated.ratedGamesPlayed += template.rounds;
+    const normResult = applyNormsAndTitleFromStandings(updated, standings, template.rounds);
     updated.confidence = clamp(updated.confidence + (ratingDelta > 0 ? 2 : ratingDelta < 0 ? -2 : 0), -20, 20);
 
     updated.history.tournaments.unshift({
@@ -455,6 +640,9 @@ export function runSwissTournament(
       score: playerScore,
       ratingDelta,
       prize,
+      performanceRating: normResult.playerPerformance,
+      averageOpponentRating: normResult.playerAverageOpp,
+      normsAwarded: normResult.awardedNorms,
       games: historyGames
     });
     updated.history.tournaments = updated.history.tournaments.slice(0, 30);
@@ -462,6 +650,9 @@ export function runSwissTournament(
     updated.history.games = updated.history.games.slice(0, 120);
     updated.meta.lastPlayedAt = new Date().toISOString();
     updated.inbox.unshift(`Month ${updated.week}: ${template.name} finished, place #${placement}, ${playerScore.toFixed(1)}/${template.rounds}.`);
+    if (normResult.awardedNorms.length > 0) {
+      updated.inbox.unshift(`Month ${updated.week}: Norm earned: ${normResult.awardedNorms.join(', ')}.`);
+    }
     if (lossBonuses > 0) {
       updated.inbox.unshift(`Month ${updated.week}: Learned from losses (+${lossBonuses} random skill points from lost games).`);
     }
@@ -479,7 +670,7 @@ export function runSwissTournament(
     prizePool,
     paidPlaces,
     simulatedPlayerGames,
-    totalPlayerGames,
+    totalPlayerGames: resolvedTotalPlayerGames,
     isComplete
   };
 }
@@ -495,7 +686,8 @@ export async function runSwissTournamentWithEngine(
   }
   const seed = state.meta.seed + state.week * 9973;
   const rng = createRng(seed);
-  const opponents = generateOpponents(seed, 31, template.avgOpponentRating, template.ratingStdDev);
+  const participantCountTarget = Math.max(2, template.fieldSize ?? 32);
+  const opponents = generateOpponents(seed, Math.max(1, participantCountTarget - 1), template.avgOpponentRating, template.ratingStdDev);
 
   const playerOpponent: Opponent = {
     id: 'player',
@@ -524,13 +716,19 @@ export async function runSwissTournamentWithEngine(
   const totalPlayerGames = template.rounds;
   const presetPlayerGames = options.presetPlayerGames ?? [];
   const maxPlayerGames = Math.max(0, Math.min(totalPlayerGames, options.maxPlayerGames ?? totalPlayerGames));
+  const { mode, phase1Rounds, cutSize } = formatConfig(template);
+  const allRoundRobinSchedule =
+    mode === 'round_robin' ? buildRoundRobinSchedule(standings.map((s) => s.id)).slice(0, template.rounds) : null;
+  let topCutRoundRobinSchedule: Array<Array<[string, string]>> | null = null;
+  let knockoutActiveIds: string[] | null = null;
+  let completedAllRounds = true;
 
   let engine: EngineHandle | null = null;
   let playerDone = 0;
   let playerGameIndex = 0;
   let gamesDone = 0;
   const playerTotal = maxPlayerGames;
-  const gamesTotal = template.rounds * Math.floor(participantCount / 2);
+  const gamesTotal = estimatedBoardsTotal(template, participantCount);
 
   onProgress?.({
     playerDone,
@@ -572,12 +770,52 @@ export async function runSwissTournamentWithEngine(
 
   try {
     for (let round = 1; round <= template.rounds; round += 1) {
-      if (playerDone >= maxPlayerGames) break;
-      const pairs = pairSwiss(standings);
+      if (playerDone >= maxPlayerGames) {
+        completedAllRounds = false;
+        break;
+      }
+      let pairs: Array<[SwissPlayer, SwissPlayer]> = [];
+      let forcePairOrder = false;
+      if (mode === 'swiss') {
+        pairs = pairSwiss(standings);
+      } else if (mode === 'round_robin') {
+        const idPairs = allRoundRobinSchedule?.[round - 1] ?? [];
+        const byId = Object.fromEntries(standings.map((s) => [s.id, s]));
+        pairs = idPairs
+          .map(([w, b]) => [byId[w], byId[b]] as const)
+          .filter((p): p is [SwissPlayer, SwissPlayer] => Boolean(p[0] && p[1]));
+        forcePairOrder = true;
+      } else if (round <= phase1Rounds) {
+        pairs = pairSwiss(standings);
+      } else {
+        const ranked = [...standings].sort((a, b) => b.score - a.score || b.buchholz - a.buchholz || b.rating - a.rating);
+        const byId = Object.fromEntries(standings.map((s) => [s.id, s]));
+        if (isKnockoutFormat(mode)) {
+          if (!knockoutActiveIds) {
+            knockoutActiveIds = ranked.slice(0, Math.min(cutSize, ranked.length)).map((p) => p.id);
+          }
+          const idPairs = knockoutRoundPairings(knockoutActiveIds);
+          pairs = idPairs
+            .map(([w, b]) => [byId[w], byId[b]] as const)
+            .filter((p): p is [SwissPlayer, SwissPlayer] => Boolean(p[0] && p[1]));
+          forcePairOrder = true;
+        } else {
+          if (!topCutRoundRobinSchedule) {
+            const topIds = ranked.slice(0, Math.min(cutSize, ranked.length)).map((p) => p.id);
+            topCutRoundRobinSchedule = buildRoundRobinSchedule(topIds).slice(0, Math.max(0, template.rounds - phase1Rounds));
+          }
+          const idPairs = topCutRoundRobinSchedule[round - phase1Rounds - 1] ?? [];
+          pairs = idPairs
+            .map(([w, b]) => [byId[w], byId[b]] as const)
+            .filter((p): p is [SwissPlayer, SwissPlayer] => Boolean(p[0] && p[1]));
+          forcePairOrder = true;
+        }
+      }
+      const knockoutWinners: string[] = [];
       for (let pairIdx = 0; pairIdx < pairs.length; pairIdx += 1) {
         const [a, b] = pairs[pairIdx]!;
-        const white = pairIdx % 2 === 0 ? a : b;
-        const black = pairIdx % 2 === 0 ? b : a;
+        const white = forcePairOrder ? a : pairIdx % 2 === 0 ? a : b;
+        const black = forcePairOrder ? b : pairIdx % 2 === 0 ? b : a;
         const whiteOpp = toOppFromPlayer(white, oppMap);
         const blackOpp = toOppFromPlayer(black, oppMap);
 
@@ -687,6 +925,12 @@ export async function runSwissTournamentWithEngine(
           };
         }
         roundGames.push({ round, white: whiteOpp, black: blackOpp, result, movesUci, pgn, playerEloChange });
+        if (isKnockoutFormat(mode) && round > phase1Rounds) {
+          knockoutWinners.push(resolveKnockoutWinner(result, white, black, seed + round * 100 + pairIdx).id);
+        }
+      }
+      if (isKnockoutFormat(mode) && round > phase1Rounds && knockoutWinners.length > 0) {
+        knockoutActiveIds = knockoutWinners;
       }
 
       standings.forEach((p) => {
@@ -698,7 +942,7 @@ export async function runSwissTournamentWithEngine(
   }
 
   standings.sort((a, b) => b.score - a.score || b.buchholz - a.buchholz || b.rating - a.rating);
-  const isComplete = playerDone >= totalPlayerGames;
+  const isComplete = completedAllRounds;
 
   const placement = standings.findIndex((p) => p.id === 'player') + 1;
   const playerScore = standings.find((p) => p.id === 'player')?.score ?? 0;
@@ -718,6 +962,9 @@ export async function runSwissTournamentWithEngine(
     tournamentId: template.id
   }));
 
+  const resolvedTotalPlayerGames = isComplete
+    ? roundGames.filter((g) => g.white.id === 'player' || g.black.id === 'player').length
+    : totalPlayerGames;
   const updated = structuredClone(state);
   if (isComplete) {
     const beforeSkills = structuredClone(state.skills);
@@ -742,7 +989,8 @@ export async function runSwissTournamentWithEngine(
       studySkills: updated.skills.studySkills - beforeSkills.studySkills
     };
     updated.publicRating = playerRating;
-    updated.title = titleFromRating(updated.publicRating);
+    updated.ratedGamesPlayed += template.rounds;
+    const normResult = applyNormsAndTitleFromStandings(updated, standings, template.rounds);
     updated.confidence = clamp(updated.confidence + (ratingDelta > 0 ? 2 : ratingDelta < 0 ? -2 : 0), -20, 20);
 
     updated.history.tournaments.unshift({
@@ -754,6 +1002,9 @@ export async function runSwissTournamentWithEngine(
       score: playerScore,
       ratingDelta,
       prize,
+      performanceRating: normResult.playerPerformance,
+      averageOpponentRating: normResult.playerAverageOpp,
+      normsAwarded: normResult.awardedNorms,
       games: historyGames
     });
     updated.history.tournaments = updated.history.tournaments.slice(0, 30);
@@ -761,6 +1012,9 @@ export async function runSwissTournamentWithEngine(
     updated.history.games = updated.history.games.slice(0, 120);
     updated.meta.lastPlayedAt = new Date().toISOString();
     updated.inbox.unshift(`Month ${updated.week}: ${template.name} finished, place #${placement}, ${playerScore.toFixed(1)}/${template.rounds}.`);
+    if (normResult.awardedNorms.length > 0) {
+      updated.inbox.unshift(`Month ${updated.week}: Norm earned: ${normResult.awardedNorms.join(', ')}.`);
+    }
     if (lossBonuses > 0) {
       updated.inbox.unshift(`Month ${updated.week}: Learned from losses (+${lossBonuses} random skill points from lost games).`);
     }
@@ -794,7 +1048,7 @@ export async function runSwissTournamentWithEngine(
     prizePool,
     paidPlaces,
     simulatedPlayerGames: playerDone,
-    totalPlayerGames,
+    totalPlayerGames: resolvedTotalPlayerGames,
     isComplete
   };
 }
@@ -930,11 +1184,19 @@ function runWorldChampionshipElo(state: GameState, template: TournamentTemplate,
       studySkills: updated.skills.studySkills - beforeSkills.studySkills
     };
     updated.publicRating = playerRating;
-    updated.title = titleFromRating(updated.publicRating);
+    updated.ratedGamesPlayed += template.rounds;
+    const normResult = applyNormsAndTitleFromStandings(updated, standings, template.rounds);
     updated.confidence = clamp(updated.confidence + (ratingDelta > 0 ? 3 : ratingDelta < 0 ? -2 : 1), -20, 20);
     if (placement === 1) {
       updated.meta.worldChampionAchieved = true;
     }
+    updated.title = titleFromProgress({
+      rating: updated.publicRating,
+      gender: updated.avatar.gender,
+      norms: updated.normProgress,
+      ratedGamesPlayed: updated.ratedGamesPlayed,
+      worldChampionAchieved: updated.meta.worldChampionAchieved
+    });
     updated.history.tournaments.unshift({
       id: `${template.id}_week_${state.week}`,
       name: template.name,
@@ -944,6 +1206,9 @@ function runWorldChampionshipElo(state: GameState, template: TournamentTemplate,
       score: playerScore,
       ratingDelta,
       prize,
+      performanceRating: normResult.playerPerformance,
+      averageOpponentRating: normResult.playerAverageOpp,
+      normsAwarded: normResult.awardedNorms,
       games: historyGames
     });
     updated.history.tournaments = updated.history.tournaments.slice(0, 30);
@@ -955,6 +1220,9 @@ function runWorldChampionshipElo(state: GameState, template: TournamentTemplate,
         ? `Month ${updated.week}: You won the World Championship match ${playerScore.toFixed(1)}-${(template.rounds - playerScore).toFixed(1)}.`
         : `Month ${updated.week}: World Championship match finished, runner-up by score ${playerScore.toFixed(1)}/${template.rounds}.`
     );
+    if (normResult.awardedNorms.length > 0) {
+      updated.inbox.unshift(`Month ${updated.week}: Norm earned: ${normResult.awardedNorms.join(', ')}.`);
+    }
     if (lossBonuses > 0) {
       updated.inbox.unshift(`Month ${updated.week}: Learned from losses (+${lossBonuses} random skill points from lost games).`);
     }
@@ -1177,11 +1445,19 @@ async function runWorldChampionshipWithEngine(
       studySkills: updated.skills.studySkills - beforeSkills.studySkills
     };
     updated.publicRating = playerRating;
-    updated.title = titleFromRating(updated.publicRating);
+    updated.ratedGamesPlayed += template.rounds;
+    const normResult = applyNormsAndTitleFromStandings(updated, standings, template.rounds);
     updated.confidence = clamp(updated.confidence + (ratingDelta > 0 ? 3 : ratingDelta < 0 ? -2 : 1), -20, 20);
     if (placement === 1) {
       updated.meta.worldChampionAchieved = true;
     }
+    updated.title = titleFromProgress({
+      rating: updated.publicRating,
+      gender: updated.avatar.gender,
+      norms: updated.normProgress,
+      ratedGamesPlayed: updated.ratedGamesPlayed,
+      worldChampionAchieved: updated.meta.worldChampionAchieved
+    });
     updated.history.tournaments.unshift({
       id: `${template.id}_week_${state.week}`,
       name: template.name,
@@ -1191,6 +1467,9 @@ async function runWorldChampionshipWithEngine(
       score: playerScore,
       ratingDelta,
       prize,
+      performanceRating: normResult.playerPerformance,
+      averageOpponentRating: normResult.playerAverageOpp,
+      normsAwarded: normResult.awardedNorms,
       games: historyGames
     });
     updated.history.tournaments = updated.history.tournaments.slice(0, 30);
@@ -1202,6 +1481,9 @@ async function runWorldChampionshipWithEngine(
         ? `Month ${updated.week}: You won the World Championship match ${playerScore.toFixed(1)}-${(template.rounds - playerScore).toFixed(1)}.`
         : `Month ${updated.week}: World Championship match finished, runner-up by score ${playerScore.toFixed(1)}/${template.rounds}.`
     );
+    if (normResult.awardedNorms.length > 0) {
+      updated.inbox.unshift(`Month ${updated.week}: Norm earned: ${normResult.awardedNorms.join(', ')}.`);
+    }
     if (lossBonuses > 0) {
       updated.inbox.unshift(`Month ${updated.week}: Learned from losses (+${lossBonuses} random skill points from lost games).`);
     }

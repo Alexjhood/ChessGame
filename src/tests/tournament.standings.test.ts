@@ -13,8 +13,9 @@ describe('tournament standings', () => {
     const state = createInitialState(777);
     const tpl = tournamentTemplates[0]!;
     const run = runSwissTournament(state, tpl);
+    const expectedField = Math.max(2, tpl.fieldSize ?? 32);
 
-    expect(run.standings).toHaveLength(32);
+    expect(run.standings).toHaveLength(expectedField);
     const deltas = run.standings.map((s) => s.rating - s.initialRating);
     expect(deltas.some((d) => d !== 0)).toBe(true);
   });
